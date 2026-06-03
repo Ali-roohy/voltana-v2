@@ -97,6 +97,7 @@
 | TASK-0007 | developer | DONE ✅ CLOSED with caveat (qa_supervisor signed off 2026-06-02) — **Phase-2 analytics foundation; battery SOH + recommendations** |
 | TASK-0008 | developer | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **completes Phase-2 analytics chain (0007→0008)** |
 | TASK-0014 | release (+ developer) | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **reproducible compose redeploy + nginx re-resolve + MailHog + SOH floor; clears the 0009/0007/0008 deploy debt** |
+| TASK-0015 | developer | **READY** — **Phase 3 (release/infra)**, release design FINALIZED 2026-06-03. GitHub repo governance: SemVer (`VERSION`=0.3.0 + tags), `.github/` issue+PR templates + CODEOWNERS, promote `changelog.md`→`CHANGELOG.md` (Keep a Changelog), `SECURITY.md`, **CI `ci.yml`** (Go build/vet/test + frontend tsc/build, no deploy), documented branch protection on `main`, labels (bug/feature/security/infra/phase-3/phase-4) + milestones (v0.3.0/v0.4.0/v1.0.0). All file contents specified in the handoff. |
 | TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
 
 ## Current Focus
