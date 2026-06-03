@@ -141,6 +141,14 @@
     **Next: developer implements → dev_supervisor → security (admin boundary) → qa.**
   - Phase-3 **OBD/ELM327** (original roadmap) remains unscoped — a later researcher/pm pass.
 - **Release/infra follow-ups (track, non-blocking):**
+  - **(0015) Branch protection on `main` BLOCKED by GitHub plan.** The `gh api PUT
+    repos/Ali-roohy/voltana-v2/branches/main/protection` returns **403 — "Upgrade to GitHub Pro or make this
+    repository public to enable this feature."** `voltana-v2` is a **private repo on a free plan**, where
+    protected branches aren't available. TASK-0015 closed without it (all other deliverables in place +
+    verified; `v0.3.0` tag is on origin @ `2777c47`). To finish: either **(a)** upgrade to GitHub Pro / move
+    to an org plan that includes protection on private repos, then run the `gh api` PUT in `docs/SETUP.md §9`,
+    or **(b)** make the repo public (NOT done — operator decision; exposes full history). The required-check
+    contexts must match the CI job names `Go API — build · vet · test` and `Frontend — typecheck · build`.
   - **(0009)** `docker-compose.yml` `api` must pass `APP_URL` + `SMTP_*` and move off the wedge-prone
     in-container `Dockerfile` (host-binary + `Dockerfile.runtime`) so a clean `compose up` works.
   - **(0007, recurring)** stale-redeploy pattern + **nginx upstream-IP cache** (nginx caches `api`'s IP at
