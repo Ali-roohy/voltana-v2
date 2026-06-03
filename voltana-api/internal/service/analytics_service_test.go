@@ -392,12 +392,12 @@ func TestAnalytics_DashboardAggregates(t *testing.T) {
 	svc, carRepo, chRepo, _ := newDashboardSvc(t)
 	ctx := context.Background()
 
-	// Two cars: lifetime odometer 10000 + 5000 = 15000 km.
+	// Car odometer values are intentionally set but must NOT affect TotalKM after
+	// TASK-0023 fix (TotalKM now comes from session-odometer deltas, not car fields).
 	c1, _ := carRepo.Create(ctx, owner, repository.CarInput{Name: "A", OdometerKM: 10000})
 	carRepo.Create(ctx, owner, repository.CarInput{Name: "B", OdometerKM: 5000})
 
-	// Three sessions (increasing time + odometer): total 60 kWh, total cost 1500.
-	// Avg efficiency is now measured from session odometer deltas (TASK-0018):
+	// Three sessions with consecutive odometers: total 60 kWh, total cost 1500.
 	//   s1→s2: 300 km, 25 kWh · s2→s3: 200 km, 15 kWh → 40 kWh over 500 km.
 	base := time.Now().Add(-3 * time.Hour)
 	for i, kc := range []struct {
@@ -414,12 +414,57 @@ func TestAnalytics_DashboardAggregates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDashboard: %v", err)
 	}
-	if stats.TotalKWh != 60 || stats.TotalCost != 1500 || stats.TotalKM != 15000 || stats.SessionCount != 3 {
-		t.Errorf("stats = %+v, want kwh=60 cost=1500 km=15000 count=3", stats)
+	// TotalKM must come from session deltas (300+200=500), NOT car odometers (10000+5000=15000).
+	if stats.TotalKWh != 60 || stats.TotalCost != 1500 || stats.TotalKM != 500 || stats.SessionCount != 3 {
+		t.Errorf("stats = %+v, want kwh=60 cost=1500 km=500 count=3", stats)
 	}
-	// avg = 40 kWh / (500 km / 100) = 40/5 = 8.0 kWh/100km (session-odometer-derived)
+	// avg = 40 kWh / (500 km / 100) = 40/5 = 8.0 kWh/100km
 	if stats.AvgKWhPer100KM == nil || *stats.AvgKWhPer100KM != 8.0 {
 		t.Errorf("avg = %v, want 8.0", stats.AvgKWhPer100KM)
+	}
+}
+
+// TestAnalytics_DashboardTotalKMFromSessionDeltas is the regression test for
+// TASK-0023: TotalKM must reflect session odometer deltas, not the car's static
+// odometer field, so it updates in real time as new sessions are logged.
+func TestAnalytics_DashboardTotalKMFromSessionDeltas(t *testing.T) {
+	owner := uuid.New()
+	svc, carRepo, chRepo, _ := newDashboardSvc(t)
+	ctx := context.Background()
+
+	// Car has a large static odometer that must NOT appear in TotalKM.
+	car, _ := carRepo.Create(ctx, owner, repository.CarInput{Name: "Test", OdometerKM: 99999})
+	base := time.Now().Add(-2 * time.Hour)
+
+	// Seed two sessions: odometers 1000 and 1100 → delta 100 km.
+	chRepo.Create(ctx, owner, domain.ChargingInput{
+		CarID: car.ID, StartedAt: base, KWhCharged: ptr(10.0), OdometerKM: ptr(1000),
+	})
+	chRepo.Create(ctx, owner, domain.ChargingInput{
+		CarID: car.ID, StartedAt: base.Add(time.Hour), KWhCharged: ptr(10.0), OdometerKM: ptr(1100),
+	})
+
+	stats, err := svc.GetDashboard(ctx, owner)
+	if err != nil {
+		t.Fatalf("GetDashboard (2 sessions): %v", err)
+	}
+	if stats.TotalKM != 100 {
+		t.Errorf("TotalKM = %d after 2 sessions, want 100 (session delta); car odometer must be ignored", stats.TotalKM)
+	}
+
+	// Add a third session (odo 1200) — delta grows to 200 km total.
+	chRepo.Create(ctx, owner, domain.ChargingInput{
+		CarID: car.ID, StartedAt: base.Add(2 * time.Hour), KWhCharged: ptr(10.0), OdometerKM: ptr(1200),
+	})
+	// Bust the dashboard cache so the next call recomputes.
+	svc.RecomputeAsync(owner, car.ID)
+
+	stats2, err := svc.GetDashboard(ctx, owner)
+	if err != nil {
+		t.Fatalf("GetDashboard (3 sessions): %v", err)
+	}
+	if stats2.TotalKM != 200 {
+		t.Errorf("TotalKM = %d after 3 sessions, want 200; dashboard must update with new sessions", stats2.TotalKM)
 	}
 }
 

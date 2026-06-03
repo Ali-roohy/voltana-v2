@@ -8,9 +8,27 @@
 
 - **Date**: 2026-06-03
 - **Active Phase**: **Phase 3 — in progress** (Phases 1 & 2 complete)
-- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) ✅ CLOSED 2026-06-03** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; full architect→dev_supervisor→security→qa chain green) + **TASK-0015 (GitHub governance) ✅ CLOSED 2026-06-03** (SemVer/`VERSION`, CI, templates, CODEOWNERS, SECURITY.md, CHANGELOG, labels/milestones; branch protection + `v0.3.0` tag applied at closure). First Phase-3 **feature** task done; release/governance baseline in place.
+- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + map/stations ✅ (0013) + admin UI ✅ (0016) + odometer ✅ (0018) + **TASK-0017 (OTP Login via Bale/Telegram) ✅ CLOSED 2026-06-03** (migration 000010: phone/bale_chat_id/telegram_chat_id; `/auth/otp/request`+`/auth/otp/verify`; `POST /v1/account/bot-link`; in-process long-poll worker; OTPSender interface with Bale/Telegram/LogOTPSender; frontend: 3-tab login + Settings bot-link card).
 
 ## Last Completed Task
+- TASK-0017 — OTP Login via Bale/Telegram Bot (**DONE / CLOSED with caveat** by qa_supervisor,
+  2026-06-03 — dev_supervisor ✅ (6/6) + security ✅ + qa ✅ (13/13 live+code) + qa_supervisor ✅).
+  Passwordless OTP login via Bale/Telegram alongside existing email/password auth. **Slice A (linking):**
+  migration **000010** (phone E.164, bale_chat_id, telegram_chat_id, 3 partial-unique indexes);
+  `POST /v1/account/bot-link` (JWT, mints `botlink:<token>` Redis, returns deep links); in-process
+  `bot.Poller` long-poll goroutine (outbound HTTPS only, handles `/start <token>` + contact-share,
+  writes to `UpdateBotLink`); `bot.LinkCallback` interface keeps service/bot layers decoupled.
+  **Slice B (OTP):** `OTPSender` interface (BaleSender / TelegramSender / LogOTPSender dev);
+  `POST /auth/otp/request` (anti-enum 202, phone+IP rate limits, cooldown, `LogOTPSender` when no token);
+  `POST /auth/otp/verify` (single-use `CacheGetDel`, constant-time compare, 5-attempt lockout,
+  reuses `issueTokenPair`). `/v1/me` now returns `phone`/`bale_linked`/`telegram_linked`. Frontend:
+  3rd login tab (phone input → 6-digit InputOTP → verify → in-memory JWT); Settings "اتصال بله/تلگرام"
+  card (linked status from `useMe`, deep links via `useBotLink` mutation). Live smoke: anti-enum 202 ✓,
+  seeded OTP verify 200+JWT ✓, replay 401 ✓, rate limit 429 ✓, LogOTPSender logged ✓,
+  migration round-trip clean ✓, email auth unaffected ✓. Host `go test` ✓ (+12 OTP tests) · `tsc` 0 · `npm build` ✓.
+  **⚠️ Caveat:** full bot send + linking handshake blocked on real Bale bot token (operator must provision
+  via Bale BotFather); `LogOTPSender` + seeded-Redis path covers all logic. Telegram API filtered in Iran —
+  Bale is prod primary.
 - TASK-0018 — Odometer Tracking for Efficiency Metrics (**DONE / CLOSED with caveat** by qa_supervisor,
   2026-06-03 — dev_supervisor ✅ (6/6) + qa ✅ (7/7 live) + qa_supervisor ✅; Phase-3 feature, no security
   stage). Optional `odometer_km` on the charging-session form → per-session **kWh/100km** (repo `LAG` prev
@@ -134,9 +152,24 @@
 | TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
 | TASK-0016 | developer (git commit) | **DONE ✅ CLOSED with caveat** (qa_supervisor signed off 2026-06-03) — dev_supervisor ✅ (5/5) + security ✅ + qa ✅ (9/9 live) + qa_supervisor ✅. Admin-only `/admin/stations` UI (table + add/edit dialog w/ shared `StationMapPicker` Leaflet preview + delete `AlertDialog` confirm + `AdminRoute` guard + admin-only Header nav) driving `/v1/stations` CRUD via extended `features/stations/{api,hooks}`. **Scope grew (operator-approved): added backend `GET /v1/me`** ({id,email,is_admin}, authed-only) — `is_admin` isn't in the JWT (TASK-0013 instant-revocation) so the guard was otherwise unimplementable; `AdminOnly` unchanged as the real boundary. Deviations: API field `power_kw` (not `max_power_kw`); table hydrates operator/address via per-row detail. qa redeployed api (in-container build OK) + live smoke: /v1/me admin/non-admin/401, non-admin POST→403, admin POST 201/PUT 200/DELETE 204→404, lat=99→400. Host `go test` ✓ (+2 `GetUser`) · `tsc` 0 · `npm build` ✓. **⚠️ Caveat: UI guard not clicked (no browser) — code-verified + /v1/me proven live.** **Depends on TASK-0013 (✅ CLOSED).** |
 | TASK-0018 | developer (git commit) | **DONE ✅ CLOSED with caveat** (qa_supervisor 2026-06-03) — dev_supervisor ✅ (6/6) + qa ✅ (7/7 live) + qa_supervisor ✅ (no security stage). Odometer tracking: optional `odometer_km` on the charging-session form; per-session **kWh/100km** from consecutive readings (repo `LAG`, service calc); dashboard avg-efficiency now **session-odometer-derived** (real data). **Spec premise was wrong** — `odometer_km` did NOT exist on `charging_sessions` (only on `cars`) → added **migration 000009** (additive nullable, operator-approved; **shifts TASK-0017's migration to 000010**). Live smoke: per-session eff=15 for qualifying pair / null otherwise, dashboard avg=15, optional create 201, negative→400, migration up+down clean (v8→v9). Host `go test` ✓ (+3 tests) · `tsc` 0 · `npm build` ✓. **⚠️ Caveat: UI not clicked (no browser) — code+API verified.** **Depends on TASK-0004 + TASK-0008 (✅ CLOSED).** First autonomous Auto-Chain run that hit a spec-error blocker and paused correctly. |
-| TASK-0017 | feature + developer | **READY** — **Phase-3 auth feature**; **architect contract FINALIZED 2026-06-03** (see `# Architect Contract — FINALIZED` in TASK-0017.md). Pinned: **(1) Linking** = authenticated deep-link (`POST /v1/account/bot-link` → `ble.ir`/`t.me` `?start=<token>`) + bot **contact-share** capturing `chat_id` **and** platform-verified `phone` (no typed phone — non-spoofable); **(2) `OTPSender`** Bale-first→Telegram-fallback (per linked chat, + failover on send error; not user-chooses), dev `LogOTPSender` mirrors `LogMailer`; **(3) long polling** (`getUpdates`, in-process goroutine) not webhook (WSL2 NAT + no public ingress); **(4) migration 000009** adds `phone`(E.164, partial-unique)/`bale_chat_id`/`telegram_chat_id`(TEXT, partial-unique). Redis schema (otp/attempts/rl/cooldown/botlink, all TTL); token path reuses extracted `issueSession`. **Build in two slices: A linking → B OTP login.** **⚠️ Flags:** linking is IN scope (OTP unusable without it — flag to PM, optional split as 0017a); **QA needs a real Bale bot token (blocker for full live smoke; `LogOTPSender` covers logic)**; Telegram API filtered in Iran → Bale is prod primary. Reviewers: **dev_supervisor + security**. **Depends on TASK-0002 (✅ CLOSED).** |
+| TASK-0017 | developer | **DONE ✅ CLOSED with caveat** (qa_supervisor 2026-06-03) — dev_supervisor ✅ (6/6) + security ✅ + qa ✅ (13/13 live+code) + qa_supervisor ✅. Passwordless OTP login via Bale/Telegram. Migration 000010 (phone/bale_chat_id/telegram_chat_id, 3 partial-unique indexes). `bot` package: OTPSender interface, BaleSender/TelegramSender/LogOTPSender, Poller (getUpdates long-poll, /start + contact-share → CompleteBotLink). `POST /v1/account/bot-link` (JWT, mints deep-link token, returns ble.ir/t.me URLs). `POST /auth/otp/request` (anti-enum 202, 3/phone/15m + 10/IP rate limits). `POST /auth/otp/verify` (single-use CacheGetDel, constant-time compare, 5-attempt lockout). /v1/me extended with phone/bale_linked/telegram_linked. Frontend: 3-tab login (phone → InputOTP → JWT), Settings bot-link card. Host `go test` ✓ (+12) · `tsc` 0 · `npm build` ✓. ⚠️ Caveat: full bot send blocked on real Bale bot token (operator must provision). |
+| TASK-0019 | feature → developer | **BACKLOG** — Theme system with car-color presets (6–8 CSS-variable themes, localStorage persistence, Settings swatch selector). No backend/migration. |
+| TASK-0020 | feature → developer | **BACKLOG** — Font selection in Settings (Vazirmatn default + Dana/Samim/Inter alternatives, self-hosted WOFF2 Persian subset, localStorage). No backend/migration. |
+| TASK-0021 | developer | **BACKLOG** — Currency unit setting (Toman/Rial/USD). Migration `000011` adds `currency` to `user_settings`; extends `formatCost` in `lib/cost.ts`; Settings selector. ⚠️ USD rate approach is a scoping blocker — developer must confirm before implementing. |
+| TASK-0022 | feature → developer | **BACKLOG** — Advanced efficiency chart: kWh/100km trend (Recharts), avg reference line, min/max band, car+date filter. Client-side from session list; no new API. |
+| TASK-0023 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Removed `ListByUser`+odometer loop from `GetDashboard`; `TotalKM` now derived from `EfficiencyAggregateByUser` session deltas. Regression test `TestAnalytics_DashboardTotalKMFromSessionDeltas` added. Live smoke: 200→350 km, no-odometer sessions unchanged, car static odometer not used. `go test ✓` |
+| TASK-0024 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Added "بستن"/X close button at bottom of expanded session detail in `Charging.tsx`. Chevron was already present. `tsc 0 · npm build ✓` |
 
 ## Current Focus
+- **➡️ Phase 3 active tasks (2026-06-03):**
+  - **TASK-0023 ✅ DONE** — `total_km` now derived from session odometer deltas. Removed `ListByUser` loop in `GetDashboard`; uses `effKM` directly. Regression test added. Live smoke: 200→350 km tracking correctly; no-odometer sessions don't change it.
+  - **TASK-0024 ✅ DONE** — Close button ("بستن" + X icon) added at bottom of expanded session detail. Chevron was already present.
+  - **TASK-0019 BACKLOG** — Theme system (CSS variable presets, localStorage, Settings swatch selector).
+  - **TASK-0020 BACKLOG** — Font selection (self-hosted Persian fonts, localStorage).
+  - **TASK-0021 BACKLOG** — Currency unit setting (migration `000011`, `formatCost` refactor). ⚠️ USD rate approach needs operator decision before implementing.
+  - **TASK-0022 BACKLOG** — Advanced efficiency trend chart (Recharts, session list, avg+range band).
+- **Recommended next:** TASK-0023 and TASK-0024 (bugs, READY) before the BACKLOG features.
+
 - **🎉 Phase 1 — Solid Foundation: COMPLETE (2026-06-01).** All Phase-1 tasks closed by qa_supervisor:
   TASK-0001 (compose stack) · 0002 (auth) · 0003 (cars/ev-models) · 0004 (charging) · 0005 (settings) ·
   **0006 (frontend off Supabase → Go API)**. Deliverable: a fully self-hosted Go + Postgres backend

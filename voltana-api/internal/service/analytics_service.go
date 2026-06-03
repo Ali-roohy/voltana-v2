@@ -111,29 +111,23 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context, userID uuid.UUID) (
 	if err != nil {
 		return nil, err
 	}
-	cars, _, err := s.cars.ListByUser(ctx, userID, 100, 0)
-	if err != nil {
-		return nil, err
-	}
-	totalKM := 0
-	for _, c := range cars {
-		totalKM += c.OdometerKM
-	}
 
 	stats := &domain.DashboardStats{
 		TotalKWh:     round2(totalKWh),
 		TotalCost:    round2(totalCost),
-		TotalKM:      totalKM,
+		TotalKM:      0, // derived below from session odometer deltas
 		SessionCount: count,
 	}
-	// Average efficiency is measured from per-session odometer deltas (TASK-0018):
-	// energy over odometer-derived distance across consecutive logged sessions —
-	// not from the cars' current odometer. Null until such session data exists.
+	// Both TotalKM and AvgKWhPer100KM are derived from the same session-odometer
+	// aggregate (TASK-0018 / TASK-0023): sum of consecutive odometer-pair deltas.
+	// TotalKM is therefore the distance *tracked in the app*, not the car's static
+	// odometer field (which only changes on manual edits and never reflects new sessions).
 	effKWh, effKM, err := s.sessions.EfficiencyAggregateByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if effKM > 0 {
+		stats.TotalKM = int(effKM + 0.5) // nearest int, positive-safe without math import
 		eff := round2(effKWh / (effKM / 100))
 		stats.AvgKWhPer100KM = &eff
 	}

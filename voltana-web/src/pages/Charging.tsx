@@ -572,6 +572,19 @@ const Charging = () => {
                           <SOCAnalysis startSoc={session.start_soc} endSoc={session.end_soc} />
                         </div>
                       )}
+
+                      {/* Close affordance — for users who have scrolled into the detail */}
+                      <div className="pt-1 flex justify-center border-t border-border/30 mt-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs text-muted-foreground h-7 px-3"
+                          onClick={() => setExpandedId(null)}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          بستن
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 )}
