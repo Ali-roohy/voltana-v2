@@ -1,0 +1,8 @@
+# Runtime-only image built from a host-compiled binary (avoids the wedge-prone
+# in-container Go build on this dev host). Mirrors Dockerfile's runtime stage.
+FROM alpine:3.19
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /app
+COPY server .
+EXPOSE 9090
+CMD ["./server"]

@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voltana — Agent Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #0f1628;
+    --surface2: #151d35;
+    --border: #1e2d50;
+    --border2: #243358;
+    --accent: #3d7fff;
+    --accent2: #00d4aa;
+    --accent3: #ff6b35;
+    --accent4: #a855f7;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #4a5e80;
+    --done: #10b981;
+    --ready: #3d7fff;
+    --inprog: #f59e0b;
+    --blocked: #ef4444;
+    --backlog: #4a5e80;
+    --review: #a855f7;
+    --testing: #06b6d4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(61,127,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(61,127,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    background: rgba(10,14,26,0.95);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: white;
+    box-shadow: 0 0 20px rgba(61,127,255,0.3);
+  }
+
+  .logo-text {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 2px;
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent2);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--accent2);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .phase-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(61,127,255,0.1);
+    border: 1px solid rgba(61,127,255,0.3);
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+
+  /* ── HERO STATS ── */
+  .hero {
+    padding: 40px 0 32px;
+  }
+
+  .hero-title {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .phase-title {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 4px;
+  }
+
+  .phase-title span { color: var(--accent); }
+
+  .phase-desc {
+    color: var(--text2);
+    font-size: 14px;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 12px;
+    margin-top: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+
+  .stat-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-1px);
+  }
+
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--c, var(--accent));
+  }
+
+  .stat-label {
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--c, var(--accent));
+    line-height: 1;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    padding-bottom: 60px;
+  }
+
+  /* ── SECTION HEADER ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── PHASE TRACKER ── */
+  .phase-tracker {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .phases {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .phase-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+    transition: all 0.2s;
+  }
+
+  .phase-item.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(61,127,255,0.1);
+  }
+
+  .phase-item.active::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(61,127,255,0.15), transparent);
+    pointer-events: none;
+  }
+
+  .phase-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+
+  .phase-name {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .phase-weeks {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+
+  .phase-progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .phase-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--c, var(--accent));
+    transition: width 0.6s ease;
+  }
+
+  .phase-status-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── TASK BOARD ── */
+  .task-columns {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+
+  .task-col-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .col-count {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .task-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+
+  .task-card.expanded {
+    border-color: var(--accent);
+  }
+
+  .task-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+
+  .task-name {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 8px;
+  }
+
+  .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+
+  .tag-persona { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.2); }
+  .tag-phase { background: rgba(61,127,255,0.1); color: #60a5fa; border: 1px solid rgba(61,127,255,0.2); }
+
+  .task-detail {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .task-card.expanded .task-detail { display: block; }
+
+  .task-detail-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .task-detail-text {
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .checklist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 3px;
+    line-height: 1.4;
+  }
+
+  .checklist-item input[type=checkbox] {
+    accent-color: var(--accent2);
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+  .sidebar-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  /* ── PERSONA STATUS ── */
+  .persona-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .persona-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--surface2);
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+
+  .persona-item:hover { border-color: var(--border2); }
+
+  .persona-item.active {
+    border-color: var(--accent);
+    background: rgba(61,127,255,0.08);
+  }
+
+  .persona-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .persona-info { flex: 1; min-width: 0; }
+
+  .persona-name {
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .persona-role {
+    font-size: 10px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .persona-code-badge {
+    font-size: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── PROMPT PANEL ── */
+  .prompt-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .prompt-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .prompt-tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .prompt-tab.active, .prompt-tab:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(61,127,255,0.08);
+  }
+
+  .prompt-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.7;
+    white-space: pre-wrap;
+    position: relative;
+    display: none;
+  }
+
+  .prompt-box.active { display: block; }
+
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text3);
+    font-size: 10px;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.15s;
+  }
+
+  .copy-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .copy-btn.copied { border-color: var(--done); color: var(--done); }
+
+  .comment { color: var(--text3); }
+  .keyword { color: var(--accent); }
+  .string { color: var(--accent2); }
+
+  /* ── ACTIVITY LOG ── */
+  .log-list { display: flex; flex-direction: column; gap: 0; }
+
+  .log-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+
+  .log-item:last-child { border-bottom: none; }
+
+  .log-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .log-content { flex: 1; }
+
+  .log-text {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.4;
+  }
+
+  .log-text strong { color: var(--text); font-weight: 600; }
+
+  .log-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+
+  /* ── STATUS COLORS ── */
+  .s-done { color: var(--done); }
+  .s-ready { color: var(--ready); }
+  .s-inprog { color: var(--inprog); }
+  .s-blocked { color: var(--blocked); }
+  .s-backlog { color: var(--backlog); }
+  .s-review { color: var(--review); }
+  .s-testing { color: var(--testing); }
+
+  .bg-done { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); }
+  .bg-ready { background: rgba(61,127,255,0.1); border: 1px solid rgba(61,127,255,0.2); }
+  .bg-inprog { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
+  .bg-blocked { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); }
+  .bg-backlog { background: rgba(74,94,128,0.1); border: 1px solid rgba(74,94,128,0.2); }
+  .bg-review { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.2); }
+  .bg-testing { background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+    .main-grid { grid-template-columns: 1fr; }
+    .task-columns { grid-template-columns: repeat(3, 1fr); }
+    .phases { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 700px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .task-columns { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ── ANIMATIONS ── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: fadeIn 0.4s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-in:nth-child(1) { animation-delay: 0.05s; }
+  .fade-in:nth-child(2) { animation-delay: 0.1s; }
+  .fade-in:nth-child(3) { animation-delay: 0.15s; }
+  .fade-in:nth-child(4) { animation-delay: 0.2s; }
+  .fade-in:nth-child(5) { animation-delay: 0.25s; }
+  .fade-in:nth-child(6) { animation-delay: 0.3s; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-mark">V⚡</div>
+        <div>
+          <div class="logo-text">Voltana</div>
+          <div class="logo-sub">Agent Orchestration Dashboard</div>
+        </div>
+      </div>
+      <div class="header-meta">
+        <div class="live-dot"></div>
+        <div class="phase-badge">PHASE 1 — ACTIVE</div>
+        <div id="clock" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)"></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="container">
+  <div class="hero">
+    <div class="hero-title">Current Phase</div>
+    <div class="phase-title">Solid <span>Foundation</span></div>
+    <div class="phase-desc">Replace Supabase → self-hosted Go API + PostgreSQL + Redis · Weeks 1–4</div>
+
+    <div class="stats-row">
+      <div class="stat-card fade-in" style="--c:var(--done)">
+        <div class="stat-label">Done</div>
+        <div class="stat-value">13</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--ready)">
+        <div class="stat-label">Ready</div>
+        <div class="stat-value">0</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--inprog)">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value">0</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--review)">
+        <div class="stat-label">Review</div>
+        <div class="stat-value">1</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--testing)">
+        <div class="stat-label">Testing</div>
+        <div class="stat-value">0</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--blocked)">
+        <div class="stat-label">Blocked</div>
+        <div class="stat-value">0</div>
+      </div>
+      <div class="stat-card fade-in" style="--c:var(--backlog)">
+        <div class="stat-label">Backlog</div>
+        <div class="stat-value">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE TRACKER -->
+  <div class="section-header">
+    <div class="section-title">Roadmap</div>
+    <div class="section-line"></div>
+  </div>
+  <div class="phase-tracker fade-in">
+    <div class="phases">
+      <div class="phase-item active" style="--c:var(--accent)">
+        <div class="phase-num">PHASE 01</div>
+        <div class="phase-name">Solid Foundation</div>
+        <div class="phase-weeks">Weeks 1–4</div>
+        <div class="phase-progress-bar"><div class="phase-progress-fill" style="--c:var(--accent);width:5%"></div></div>
+        <div class="phase-status-tag bg-inprog s-inprog">In Progress</div>
+      </div>
+      <div class="phase-item" style="--c:var(--accent2)">
+        <div class="phase-num">PHASE 02</div>
+        <div class="phase-name">Intelligence Layer</div>
+        <div class="phase-weeks">Weeks 5–8</div>
+        <div class="phase-progress-bar"><div class="phase-progress-fill" style="--c:var(--accent2);width:0%"></div></div>
+        <div class="phase-status-tag bg-backlog s-backlog">Backlog</div>
+      </div>
+      <div class="phase-item" style="--c:var(--accent3)">
+        <div class="phase-num">PHASE 03</div>
+        <div class="phase-name">Mobile & OBD</div>
+        <div class="phase-weeks">Weeks 9–14</div>
+        <div class="phase-progress-bar"><div class="phase-progress-fill" style="--c:var(--accent3);width:0%"></div></div>
+        <div class="phase-status-tag bg-backlog s-backlog">Backlog</div>
+      </div>
+      <div class="phase-item" style="--c:var(--accent4)">
+        <div class="phase-num">PHASE 04</div>
+        <div class="phase-name">Commercial Hardening</div>
+        <div class="phase-weeks">Post-MVP</div>
+        <div class="phase-progress-bar"><div class="phase-progress-fill" style="--c:var(--accent4);width:0%"></div></div>
+        <div class="phase-status-tag bg-backlog s-backlog">Backlog</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+    <div>
+      <!-- TASK BOARD -->
+      <div class="section-header">
+        <div class="section-title">Task Board</div>
+        <div class="section-line"></div>
+      </div>
+
+      <div class="task-columns">
+        <!-- BACKLOG -->
+        <div>
+          <div class="task-col-header bg-backlog">
+            <span class="s-backlog">Backlog</span>
+            <span class="col-count s-backlog">0</span>
+          </div>
+          <div id="col-backlog"></div>
+        </div>
+
+        <!-- READY -->
+        <div>
+          <div class="task-col-header bg-ready">
+            <span class="s-ready">Ready</span>
+            <span class="col-count s-ready">0</span>
+          </div>
+          <div id="col-ready"></div>
+        </div>
+
+        <!-- IN PROGRESS -->
+        <div>
+          <div class="task-col-header bg-inprog">
+            <span class="s-inprog">In Progress</span>
+            <span class="col-count s-inprog">0</span>
+          </div>
+          <div id="col-inprog"></div>
+        </div>
+
+        <!-- REVIEW -->
+        <div>
+          <div class="task-col-header bg-review">
+            <span class="s-review">Review</span>
+            <span class="col-count s-review">1</span>
+          </div>
+          <div id="col-review"></div>
+        </div>
+
+        <!-- TESTING -->
+        <div>
+          <div class="task-col-header bg-testing">
+            <span class="s-testing">Testing</span>
+            <span class="col-count s-testing">0</span>
+          </div>
+          <div id="col-testing"></div>
+        </div>
+
+        <!-- DONE -->
+        <div>
+          <div class="task-col-header bg-done">
+            <span class="s-done">Done</span>
+            <span class="col-count s-done">13</span>
+          </div>
+          <div id="col-done"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- PERSONAS -->
+      <div class="sidebar-card">
+        <div class="section-header" style="margin-bottom:12px">
+          <div class="section-title">Active Personas</div>
+          <div class="section-line"></div>
+        </div>
+        <div class="persona-list" id="persona-list"></div>
+      </div>
+
+      <!-- ACTIVITY -->
+      <div class="sidebar-card">
+        <div class="section-header" style="margin-bottom:12px">
+          <div class="section-title">Activity Log</div>
+          <div class="section-line"></div>
+        </div>
+        <div class="log-list" id="activity-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROMPT PANEL -->
+  <div class="section-header">
+    <div class="section-title">Quick Prompts — Copy to Claude Code</div>
+    <div class="section-line"></div>
+  </div>
+  <div class="prompt-panel fade-in" style="margin-bottom:60px">
+    <div class="prompt-tabs" id="prompt-tabs"></div>
+    <div id="prompt-boxes"></div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+
+const TASKS = [
+  {
+    id: 'TASK-0001',
+    name: 'Docker Compose Stack Bootstrap',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'Bring up Postgres, Redis, Nginx, and Go API skeleton with one command.',
+    acceptance: [
+      'docker-compose up -d starts all 5 services',
+      'curl http://localhost/health returns {"status":"ok"}',
+      'Postgres volume persists between restarts',
+      'Redis AOF persistence enabled',
+      'migrate service exits 0',
+      'No secrets in committed files',
+    ],
+    depends: [],
+  },
+  {
+    id: 'TASK-0002',
+    name: 'Go Auth API (register / login / refresh / logout)',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor + security',
+    goal: 'Full JWT auth flow replacing Supabase auth.',
+    acceptance: [
+      'register creates user with bcrypt cost 12',
+      'login returns access token + httpOnly refresh cookie',
+      '401 for wrong credentials',
+      'refresh rotates token + blacklists old in Redis',
+      'Rate limit: 10 login attempts / 15 min per IP',
+      'go test ./internal/service/... passes',
+    ],
+    depends: ['TASK-0001'],
+  },
+  {
+    id: 'TASK-0003',
+    name: 'Cars & EV Models CRUD API',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'GET/POST/PUT/DELETE /v1/cars and GET /v1/ev-models with search.',
+    acceptance: [
+      'All CRUD with valid JWT',
+      '401 without JWT',
+      'Every query filters by user_id from JWT',
+      'go test ./internal/service/... passes',
+    ],
+    depends: ['TASK-0002'],
+  },
+  {
+    id: 'TASK-0004',
+    name: 'Charging Sessions CRUD API',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'Port charging session logic from Supabase to Go. Server-side cost calculation.',
+    acceptance: [
+      'Cost calculated server-side if not provided',
+      'SOC validated 0–100',
+      'Sessions filtered by user_id always',
+      'go test ./internal/service/... passes',
+    ],
+    depends: ['TASK-0003'],
+  },
+  {
+    id: 'TASK-0005',
+    name: 'User Settings API',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'GET/PUT /v1/settings — electricity rates + default car.',
+    acceptance: [
+      'Settings auto-created on first GET',
+      'Rates readable and writable',
+    ],
+    depends: ['TASK-0003'],
+  },
+  {
+    id: 'TASK-0006',
+    name: 'Frontend: Replace Supabase SDK with Go API',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'Refactor React to call Go API. Fix all 8 known bugs.',
+    acceptance: [
+      'npm run build succeeds',
+      'Login/logout/session persist across refresh',
+      'All CRUD end-to-end',
+      'No Supabase imports remain',
+      'All 8 bugs fixed',
+    ],
+    depends: ['TASK-0005'],
+  },
+  {
+    id: 'TASK-0009',
+    name: 'Email Verification Gate',
+    status: 'DONE',
+    phase: 1,
+    persona: 'developer',
+    reviewer: 'dev_supervisor + security',
+    goal: 'Enforce is_email_verified at login (403) and implement SMTP verification email dispatch. N2 follow-up from TASK-0002.',
+    acceptance: [
+      'Unverified user + correct password → 403 EMAIL_NOT_VERIFIED',
+      'Wrong password still 401 (no enumeration)',
+      'Verification token stored as SHA-256 hash, never raw',
+      'POST /auth/verify-email flips is_email_verified',
+      'resend-verification rate-limited',
+      'Mailer injected as interface; tests use mock',
+    ],
+    depends: ['TASK-0002'],
+  },
+  {
+    id: 'TASK-0007',
+    name: 'Battery Health Snapshots',
+    status: 'DONE',
+    phase: 2,
+    persona: 'developer',
+    reviewer: 'dev_supervisor + qa',
+    goal: 'Delta-SOC battery health estimation as background job. LFP vs NMC rules.',
+    acceptance: [
+      'Background job triggered after each session',
+      'GET /v1/analytics/battery/:car_id returns SOH%',
+      'LFP and NMC rules applied correctly',
+      'go test ./internal/service/... passes',
+    ],
+    depends: ['TASK-0004'],
+  },
+  {
+    id: 'TASK-0008',
+    name: 'Dashboard Analytics API + Battery Chart',
+    status: 'DONE',
+    phase: 2,
+    persona: 'developer',
+    reviewer: 'dev_supervisor',
+    goal: 'Aggregated dashboard stats cached in Redis + Recharts battery health trend.',
+    acceptance: [
+      'GET /v1/analytics/dashboard returns all stats',
+      'Response cached 5 min in Redis',
+      'Battery health chart renders in dashboard',
+    ],
+    depends: ['TASK-0007'],
+  },
+];
+
+const PERSONAS = [
+  { tag: 'pm',             name: 'Product Manager',  color: '#6366f1', bg: 'rgba(99,102,241,0.15)',  canCode: false },
+  { tag: 'architect',      name: 'Architect',         color: '#0ea5e9', bg: 'rgba(14,165,233,0.15)', canCode: false },
+  { tag: 'developer',      name: 'Developer',         color: '#10b981', bg: 'rgba(16,185,129,0.15)', canCode: true  },
+  { tag: 'dev_supervisor', name: 'Dev Supervisor',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', canCode: false },
+  { tag: 'feature',        name: 'Feature Engineer',  color: '#ec4899', bg: 'rgba(236,72,153,0.15)', canCode: false },
+  { tag: 'security',       name: 'Security',          color: '#ef4444', bg: 'rgba(239,68,68,0.15)',  canCode: false },
+  { tag: 'qa',             name: 'QA Engineer',       color: '#a855f7', bg: 'rgba(168,85,247,0.15)', canCode: false },
+  { tag: 'docs',           name: 'Docs & DX',         color: '#14b8a6', bg: 'rgba(20,184,166,0.15)', canCode: false },
+  { tag: 'release',        name: 'Release / CI',      color: '#f97316', bg: 'rgba(249,115,22,0.15)', canCode: false },
+];
+
+const PROMPTS = {
+  'Start Session': `# Acting as: dev_supervisor
+
+Read .ai/context.md and .ai/workflows/ — 
+summarize current project state and 
+identify next READY task.`,
+
+  'Implement Task': `# Acting as: developer
+
+Read TASK-0001 from .ai/workflows/TASK-0001.md.
+Implement all items in Scope In.
+Update task status to IN_PROGRESS first.
+Update to REVIEW when done.
+Update changelog.md.`,
+
+  'Review Code': `# Acting as: dev_supervisor
+
+Review developer output for TASK-0001.
+Use the review checklist from Dev_Supervisor.md.
+Output PASS or FAIL with reasons.
+If PASS: update task status to DONE.`,
+
+  'Security Review': `# Acting as: security
+
+Review the auth flow in:
+voltana-api/internal/handler/auth_handler.go
+voltana-api/internal/service/auth_service.go
+
+Check: JWT handling, bcrypt cost, 
+token storage, rate limiting, log redaction.
+Output findings as handoff to developer if any issues.`,
+
+  'Run QA': `# Acting as: qa
+
+Run the check pipeline:
+  go test ./...
+  npm run build
+  docker-compose up -d && curl localhost/health
+
+Report PASS/FAIL with evidence.
+If FAIL: log to workflow task and notify dev_supervisor.`,
+
+  'Plan Phase': `# Acting as: pm
+
+Review .ai/context.md.
+Define scope and acceptance criteria 
+for the next 3 tasks in Phase 1.
+Create TASK-XXXX.md files in .ai/workflows/.
+Set status to BACKLOG.`,
+
+  'Update Docs': `# Acting as: docs
+
+Update docs/ARCHITECTURE.md to reflect 
+changes made in the last completed task.
+Check .ai/workflows/ for recently DONE tasks.
+Output handoff to developer for any doc file changes.`,
+};
+
+const ACTIVITY = [
+  { icon: '🚗', color: 'rgba(168,85,247,0.2)', text: '<strong>TASK-0003 implemented + verified</strong> — cars CRUD + ev-models search; go test ok, migration 000003 (12 models), live + cross-user 404 isolation green → REVIEW', time: 'Just now' },
+  { icon: '📐', color: 'rgba(14,165,233,0.2)', text: '<strong>TASK-0003 contract ready</strong> — architect added API contract + own spec file; cars/ev_models tables already in 000001, only seed needed.', time: 'Just now' },
+  { icon: '🏁', color: 'rgba(16,185,129,0.2)', text: '<strong>TASK-0002 CLOSED</strong> — qa_supervisor signed off; full security/dev/qa chain PASS, FAIL→fix→PASS traceable', time: 'Just now' },
+  { icon: '🎉', color: 'rgba(16,185,129,0.2)', text: '<strong>TASK-0002 qa PASS</strong> — go test ./... exit 0, live flow green, 10/10 criteria', time: 'Just now' },
+  { icon: '📝', color: 'rgba(99,102,241,0.2)', text: '<strong>TASK-0009 created</strong> — Email Verification Gate (Phase 1, BACKLOG) — N2 follow-up from TASK-0002', time: 'Just now' },
+  { icon: '✅', color: 'rgba(245,158,11,0.2)', text: '<strong>TASK-0002 dev_supervisor PASS</strong> — security + code review passed, handed to qa (testing)', time: 'Just now' },
+  { icon: '🛡️', color: 'rgba(16,185,129,0.2)', text: '<strong>TASK-0002 security re-review PASS</strong> — S1-S4 verified', time: 'Just now' },
+  { icon: '📋', color: 'rgba(61,127,255,0.2)', text: '<strong>.ai/ system bootstrapped</strong> — CLAUDE.md, PERSONA_ROUTER, context, workflows, ADRs created', time: 'Just now' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>TASK-0001</strong> moved to READY — Docker Compose stack bootstrap', time: 'Just now' },
+  { icon: '🏗️', color: 'rgba(14,165,233,0.2)', text: '<strong>architect</strong> defined ADR-001 (Supabase → Go stack), ADR-002 (feature structure), ADR-003 (JWT strategy)', time: 'Session start' },
+  { icon: '📄', color: 'rgba(168,85,247,0.2)', text: '<strong>Architecture doc v2.0</strong> generated — 11 sections, full schema, API design, roadmap', time: 'Session start' },
+];
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+
+function statusClass(s) {
+  return { DONE:'done', READY:'ready', IN_PROGRESS:'inprog', REVIEW:'review', TESTING:'testing', BLOCKED:'blocked', BACKLOG:'backlog' }[s] || 'backlog';
+}
+
+function renderTasks() {
+  const cols = { BACKLOG:'backlog', READY:'ready', IN_PROGRESS:'inprog', REVIEW:'review', TESTING:'testing', DONE:'done' };
+  Object.values(cols).forEach(id => document.getElementById('col-'+id).innerHTML = '');
+
+  TASKS.forEach(task => {
+    const sc = statusClass(task.status);
+    const persona = PERSONAS.find(p => p.tag === task.persona) || PERSONAS[2];
+    const colKey = cols[task.status] || 'backlog';
+    const col = document.getElementById('col-'+colKey);
+    if (!col) return;
+
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.innerHTML = `
+      <div class="task-id">${task.id} · P${task.phase}</div>
+      <div class="task-name">${task.name}</div>
+      <div class="task-meta">
+        <span class="tag tag-persona">${task.persona}</span>
+        <span class="tag tag-phase" style="background:rgba(61,127,255,0.08)">ph${task.phase}</span>
+      </div>
+      <div class="task-detail">
+        <div class="task-detail-label">Goal</div>
+        <div class="task-detail-text">${task.goal}</div>
+        <div class="task-detail-label">Acceptance Criteria</div>
+        ${task.acceptance.map(a => `<div class="checklist-item"><input type="checkbox"> ${a}</div>`).join('')}
+        ${task.depends.length ? `<div class="task-detail-label" style="margin-top:8px">Depends On</div><div class="task-detail-text">${task.depends.join(', ')}</div>` : ''}
+      </div>
+    `;
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+    col.appendChild(card);
+  });
+}
+
+function renderPersonas() {
+  const list = document.getElementById('persona-list');
+  PERSONAS.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'persona-item' + (p.tag === 'developer' ? ' active' : '');
+    item.innerHTML = `
+      <div class="persona-avatar" style="background:${p.bg};color:${p.color}">${p.tag.slice(0,2).toUpperCase()}</div>
+      <div class="persona-info">
+        <div class="persona-name">${p.name}</div>
+        <div class="persona-role">${p.tag}</div>
+      </div>
+      <div class="persona-code-badge ${p.canCode ? 'bg-done s-done' : 'bg-backlog s-backlog'}">${p.canCode ? '✍ CODE' : 'NO-CODE'}</div>
+    `;
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.persona-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+    });
+    list.appendChild(item);
+  });
+}
+
+function renderActivity() {
+  const log = document.getElementById('activity-log');
+  ACTIVITY.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.innerHTML = `
+      <div class="log-icon" style="background:${a.color}">${a.icon}</div>
+      <div class="log-content">
+        <div class="log-text">${a.text}</div>
+        <div class="log-time">${a.time}</div>
+      </div>
+    `;
+    log.appendChild(item);
+  });
+}
+
+function renderPrompts() {
+  const tabs = document.getElementById('prompt-tabs');
+  const boxes = document.getElementById('prompt-boxes');
+  let first = true;
+
+  Object.entries(PROMPTS).forEach(([label, prompt]) => {
+    const tab = document.createElement('button');
+    tab.className = 'prompt-tab' + (first ? ' active' : '');
+    tab.textContent = label;
+
+    const box = document.createElement('div');
+    box.className = 'prompt-box' + (first ? ' active' : '');
+
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'COPY';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(prompt).then(() => {
+        btn.textContent = 'COPIED ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 2000);
+      });
+    });
+
+    // syntax highlight
+    const colored = prompt
+      .replace(/(#.*)/g, '<span class="comment">$1</span>')
+      .replace(/\b(TASK-\d+)\b/g, '<span class="string">$1</span>');
+    box.innerHTML = colored;
+    box.appendChild(btn);
+
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.prompt-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.prompt-box').forEach(b => b.classList.remove('active'));
+      tab.classList.add('active');
+      box.classList.add('active');
+    });
+
+    tabs.appendChild(tab);
+    boxes.appendChild(box);
+    first = false;
+  });
+}
+
+function clock() {
+  const el = document.getElementById('clock');
+  const now = new Date();
+  el.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+  setTimeout(clock, 1000);
+}
+
+// INIT
+renderTasks();
+renderPersonas();
+renderActivity();
+renderPrompts();
+clock();
+</script>
+</body>
+</html>

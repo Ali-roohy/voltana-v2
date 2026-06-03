@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS user_settings;
+DROP TABLE IF EXISTS charging_sessions;
+DROP TABLE IF EXISTS cars;
+DROP TABLE IF EXISTS ev_models;
+DROP TABLE IF EXISTS users;
+DROP FUNCTION IF EXISTS set_updated_at();

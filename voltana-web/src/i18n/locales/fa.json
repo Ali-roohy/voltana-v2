@@ -1,0 +1,104 @@
+{
+  "app": {
+    "name": "ولتانا",
+    "tagline": "مدیریت هوشمند خودروی برقی شما"
+  },
+  "nav": {
+    "dashboard": "داشبورد",
+    "cars": "خودروها",
+    "charging": "شارژ",
+    "map": "نقشه",
+    "settings": "تنظیمات"
+  },
+  "auth": {
+    "login": "ورود",
+    "signup": "ثبت نام",
+    "logout": "خروج",
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "name": "نام",
+    "phone": "شماره تماس",
+    "verifyEmail": "تأیید ایمیل",
+    "verifying": "در حال تأیید ایمیل شما...",
+    "verifiedSuccess": "ایمیل شما تأیید شد. اکنون می‌توانید وارد شوید.",
+    "verifyFailed": "این لینک تأیید نامعتبر یا منقضی شده است.",
+    "backToLogin": "بازگشت به ورود",
+    "checkEmail": "لینک تأیید به این آدرس ارسال شد:",
+    "checkEmailHint": "برای فعال‌سازی حساب، لینک داخل ایمیل را باز کنید و سپس وارد شوید.",
+    "resend": "ارسال مجدد ایمیل تأیید",
+    "resendSuccess": "اگر حساب وجود داشته باشد و تأیید نشده باشد، لینک جدیدی ارسال شد.",
+    "resendThrottled": "درخواست‌های بیش از حد. لطفاً کمی صبر کنید و دوباره تلاش کنید.",
+    "signupCheckEmail": "حساب ایجاد شد! برای تأیید، ایمیل خود را بررسی کنید.",
+    "loginNotVerified": "لطفاً قبل از ورود، ایمیل خود را تأیید کنید."
+  },
+  "dashboard": {
+    "welcome": "خوش آمدید",
+    "totalCharge": "کل شارژ",
+    "totalCost": "هزینه کل",
+    "avgEfficiency": "بازدهی متوسط",
+    "avgCostPerSession": "میانگین هزینه هر جلسه",
+    "monthlyCost": "هزینه ماهانه (تومان)",
+    "selectCar": "خودرو را انتخاب کنید"
+  },
+  "cars": {
+    "addCar": "افزودن خودرو",
+    "myCars": "خودروهای من",
+    "brand": "برند",
+    "model": "مدل",
+    "year": "سال ساخت",
+    "batteryCapacity": "ظرفیت باتری (kWh)",
+    "licensePlate": "پلاک",
+    "edit": "ویرایش",
+    "delete": "حذف",
+    "searchModel": "جستجوی مدل خودرو...",
+    "selectModel": "انتخاب از لیست",
+    "manualEntry": "ورود دستی",
+    "vehicleType": "نوع خودرو",
+    "batteryChemistry": "نوع شیمی باتری",
+    "range": "برد (کیلومتر)",
+    "confirmDelete": "آیا از حذف این خودرو مطمئن هستید؟",
+    "carAdded": "خودرو با موفقیت اضافه شد",
+    "carUpdated": "خودرو با موفقیت به‌روزرسانی شد",
+    "carDeleted": "خودرو با موفقیت حذف شد"
+  },
+  "charging": {
+    "sessions": "جلسات شارژ",
+    "addSession": "افزودن جلسه شارژ",
+    "date": "تاریخ",
+    "duration": "مدت زمان",
+    "energy": "انرژی (kWh)",
+    "cost": "هزینه",
+    "from": "از تاریخ",
+    "to": "تا تاریخ",
+    "clearFilters": "پاک کردن فیلترها",
+    "noSessionsInRange": "جلسه‌ای در این بازه یافت نشد",
+    "invalidRange": "بازه تاریخ نامعتبر است — تاریخ شروع بعد از پایان است",
+    "notes": "یادداشت"
+  },
+  "tou": {
+    "thisMonth": "این ماه — تفکیک هزینه",
+    "peak": "اوج بار",
+    "mid": "میان باری",
+    "offpeak": "کم باری",
+    "total": "مجموع",
+    "toman": "تومان",
+    "noBreakdown": "بدون تفکیک زمان مصرف"
+  },
+  "settings": {
+    "language": "زبان",
+    "notifications": "اعلان‌ها",
+    "theme": "تم",
+    "electricityRates": "نرخ‌های برق",
+    "peakRate": "نرخ اوج بار",
+    "midRate": "نرخ میان‌باری",
+    "offpeakRate": "نرخ کم‌باری"
+  },
+  "common": {
+    "save": "ذخیره",
+    "cancel": "لغو",
+    "delete": "حذف",
+    "edit": "ویرایش",
+    "add": "افزودن",
+    "back": "بازگشت"
+  }
+}

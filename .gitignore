@@ -1,0 +1,20 @@
+# Secrets — never commit (use .env.example with placeholders)
+.env
+.env.production
+voltana-web/.env
+*.env.local
+*.local
+
+# Dependencies
+node_modules/
+voltana-web/node_modules/
+
+# Go
+voltana-api/vendor/
+voltana-api/server
+
+# Build artifacts
+voltana-web/dist/
+
+# OS
+.DS_Store

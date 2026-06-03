@@ -1,0 +1,217 @@
+package handler
+
+import (
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"voltana-api/internal/repository"
+	"voltana-api/internal/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	refreshCookieName = "refresh_token"
+	refreshCookiePath = "/auth"
+)
+
+// AuthHandler wires HTTP requests to AuthService.
+type AuthHandler struct {
+	auth   *service.AuthService
+	isProd bool
+}
+
+func NewAuthHandler(auth *service.AuthService, isProd bool) *AuthHandler {
+	return &AuthHandler{auth: auth, isProd: isProd}
+}
+
+// ── request / response types ─────────────────────────────────────────────────
+
+type registerRequest struct {
+	Email    string `json:"email"    binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+type loginRequest struct {
+	Email    string `json:"email"    binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+}
+
+type verifyEmailRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+type resendVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type tokenResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+// ── handlers ──────────────────────────────────────────────────────────────────
+
+// Register godoc
+// POST /auth/register
+func (h *AuthHandler) Register(c *gin.Context) {
+	var req registerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.auth.Register(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		if errors.Is(err, repository.ErrEmailTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+			return
+		}
+		log.Printf("register: user=%s err=%v", maskEmail(req.Email), err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "registration failed"})
+		return
+	}
+
+	log.Printf("register: new user id=%s", user.ID)
+	c.JSON(http.StatusCreated, gin.H{
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+}
+
+// Login godoc
+// POST /auth/login
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req loginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	access, refresh, err := h.auth.Login(c.Request.Context(), req.Email, req.Password, c.ClientIP())
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		case errors.Is(err, service.ErrEmailNotVerified):
+			c.JSON(http.StatusForbidden, gin.H{"error": "email not verified", "code": "EMAIL_NOT_VERIFIED"})
+		case errors.Is(err, service.ErrRateLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
+		default:
+			log.Printf("login: unexpected error: %v", err) // no credentials in log
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
+		}
+		return
+	}
+
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
+}
+
+// VerifyEmail godoc
+// POST /auth/verify-email
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	var req verifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "code": "INVALID_REQUEST"})
+		return
+	}
+
+	already, err := h.auth.VerifyEmail(c.Request.Context(), req.Token, c.ClientIP())
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrRateLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later", "code": "RATE_LIMITED"})
+		case errors.Is(err, service.ErrInvalidVerificationToken):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token", "code": "INVALID_VERIFICATION_TOKEN"})
+		default:
+			log.Printf("verify-email: unexpected error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "verification failed"})
+		}
+		return
+	}
+
+	if already {
+		c.JSON(http.StatusOK, gin.H{"message": "email already verified"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "email verified"})
+}
+
+// ResendVerification godoc
+// POST /auth/resend-verification
+func (h *AuthHandler) ResendVerification(c *gin.Context) {
+	var req resendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "code": "INVALID_REQUEST"})
+		return
+	}
+
+	if err := h.auth.ResendVerification(c.Request.Context(), req.Email, c.ClientIP()); err != nil {
+		switch {
+		case errors.Is(err, service.ErrRateLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests, try again later", "code": "RATE_LIMITED"})
+		default:
+			log.Printf("resend-verification: unexpected error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "request failed"})
+		}
+		return
+	}
+
+	// Always 202 for a well-formed request (anti-enumeration).
+	c.JSON(http.StatusAccepted, gin.H{"message": "if the account exists and is unverified, a verification email has been sent"})
+}
+
+// Refresh godoc
+// POST /auth/refresh
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	refreshToken, err := c.Cookie(refreshCookieName)
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing refresh token"})
+		return
+	}
+
+	access, newRefresh, err := h.auth.Refresh(c.Request.Context(), refreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
+		return
+	}
+
+	h.setRefreshCookie(c, newRefresh)
+	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
+}
+
+// Logout godoc
+// POST /auth/logout
+func (h *AuthHandler) Logout(c *gin.Context) {
+	refreshToken, err := c.Cookie(refreshCookieName)
+	if err == nil && refreshToken != "" {
+		if rErr := h.auth.Logout(c.Request.Context(), refreshToken); rErr != nil {
+			log.Printf("logout: revocation failed: %v", rErr)
+		}
+	}
+
+	// Clear the cookie regardless of revocation outcome
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, "", h.isProd, true)
+	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string) {
+	maxAge := int((30 * 24 * time.Hour).Seconds())
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(refreshCookieName, token, maxAge, refreshCookiePath, "", h.isProd, true)
+}
+
+// maskEmail returns "a***@domain.com" to avoid leaking full emails in logs.
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 1 {
+		return "***"
+	}
+	return string(email[0]) + "***" + email[at:]
+}

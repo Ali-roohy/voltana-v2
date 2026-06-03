@@ -1,0 +1,104 @@
+{
+  "app": {
+    "name": "Voltana",
+    "tagline": "Smart management for your electric vehicle"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "cars": "Cars",
+    "charging": "Charging",
+    "map": "Map",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Login",
+    "signup": "Sign Up",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "phone": "Phone Number",
+    "verifyEmail": "Verify Email",
+    "verifying": "Verifying your email...",
+    "verifiedSuccess": "Your email is verified. You can now log in.",
+    "verifyFailed": "This verification link is invalid or has expired.",
+    "backToLogin": "Back to login",
+    "checkEmail": "We sent a verification link to",
+    "checkEmailHint": "Open the link in your email to activate your account, then log in.",
+    "resend": "Resend verification email",
+    "resendSuccess": "If the account exists and is unverified, a new link has been sent.",
+    "resendThrottled": "Too many requests. Please wait a moment and try again.",
+    "signupCheckEmail": "Account created! Check your email to verify it.",
+    "loginNotVerified": "Please verify your email before logging in."
+  },
+  "dashboard": {
+    "welcome": "Welcome",
+    "totalCharge": "Total Charge",
+    "totalCost": "Total Cost",
+    "avgEfficiency": "Avg Efficiency",
+    "avgCostPerSession": "Avg Cost / Session",
+    "monthlyCost": "Monthly Cost (Toman)",
+    "selectCar": "Select Car"
+  },
+  "cars": {
+    "addCar": "Add Car",
+    "myCars": "My Cars",
+    "brand": "Brand",
+    "model": "Model",
+    "year": "Year",
+    "batteryCapacity": "Battery Capacity (kWh)",
+    "licensePlate": "License Plate",
+    "edit": "Edit",
+    "delete": "Delete",
+    "searchModel": "Search vehicle model...",
+    "selectModel": "Select from list",
+    "manualEntry": "Manual entry",
+    "vehicleType": "Vehicle Type",
+    "batteryChemistry": "Battery Chemistry",
+    "range": "Range (km)",
+    "confirmDelete": "Are you sure you want to delete this car?",
+    "carAdded": "Car added successfully",
+    "carUpdated": "Car updated successfully",
+    "carDeleted": "Car deleted successfully"
+  },
+  "charging": {
+    "sessions": "Charging Sessions",
+    "addSession": "Add Session",
+    "date": "Date",
+    "duration": "Duration",
+    "energy": "Energy (kWh)",
+    "cost": "Cost",
+    "from": "From",
+    "to": "To",
+    "clearFilters": "Clear",
+    "noSessionsInRange": "No sessions in this range",
+    "invalidRange": "Invalid date range — \"from\" is after \"to\"",
+    "notes": "Notes"
+  },
+  "tou": {
+    "thisMonth": "This Month — Cost Breakdown",
+    "peak": "Peak",
+    "mid": "Mid",
+    "offpeak": "Off-Peak",
+    "total": "Total",
+    "toman": "Toman",
+    "noBreakdown": "No time-of-use breakdown"
+  },
+  "settings": {
+    "language": "Language",
+    "notifications": "Notifications",
+    "theme": "Theme",
+    "electricityRates": "Electricity Rates",
+    "peakRate": "Peak Rate",
+    "midRate": "Mid Rate",
+    "offpeakRate": "Off-Peak Rate"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "back": "Back"
+  }
+}
