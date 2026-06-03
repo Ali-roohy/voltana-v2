@@ -146,14 +146,12 @@
     `gh repo edit --visibility public`; secret-scan of full history was clean — no tracked `.env`, no secret
     diffs) to unblock the feature on the free plan. Protection now active: both CI checks required
     (`Go API — build · vet · test` + `Frontend — typecheck · build`, strict/up-to-date), **1 approving review**,
-    `enforce_admins=true`, no force-push, no deletions, conversation resolution required.
-    - **⚠️ Consequence — DoD direct-push workflow now BLOCKED.** With required PR + 1 approval + `enforce_admins`,
-      **nobody (incl. the owner) can push directly to `main`**, and a **solo maintainer cannot approve their own
-      PR → cannot merge**. The DoD "Git Commit Rule" (`git add . && commit && push` to main) no longer works as
-      written. **Decision needed (operator):** (a) relax to **0 required approvals** (PR + green checks still
-      enforced; owner can merge own PR — TASK-0015 spec §4's recommended solo-dev setting), or (b) set
-      `enforce_admins=false` so the owner bypasses, or (c) adopt a real PR-based flow. Until resolved, the
-      persona workflow's direct commits to `main` will be rejected.
+    no force-push, no deletions, conversation resolution required.
+    - **`enforce_admins=false` (operator decision 2026-06-03).** Required PR + 1 approval + CI checks apply to
+      non-admins/automation, but the **admin owner bypasses**, so the DoD "Git Commit Rule" (direct
+      `git add . && commit && push` to `main`) still works for the persona workflow. Chosen over relaxing to
+      0 approvals / a PR-only flow because a solo maintainer can't approve their own PR (would deadlock merges).
+      If contributors are added later, switch to a real PR-based flow + re-enable `enforce_admins`.
   - **(0009)** `docker-compose.yml` `api` must pass `APP_URL` + `SMTP_*` and move off the wedge-prone
     in-container `Dockerfile` (host-binary + `Dockerfile.runtime`) so a clean `compose up` works.
   - **(0007, recurring)** stale-redeploy pattern + **nginx upstream-IP cache** (nginx caches `api`'s IP at
