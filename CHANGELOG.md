@@ -8,16 +8,15 @@ Granular per-task records (specs, reviews, acceptance evidence) live in `.ai/wor
 
 ## [Unreleased]
 
-### Added
-- GitHub repository governance: SemVer (`VERSION` + tags), issue/PR templates, `CODEOWNERS`, `SECURITY.md`,
-  CI pipeline (Go build/vet/test + frontend typecheck/build), and this `CHANGELOG.md` (TASK-0015).
-- Project documentation: `README.md`, `docs/SETUP.md`, `docs/ARCHITECTURE.md`.
-
 ---
 
 ## [0.3.0] — 2026-06-03 — Phase 3 (partial)
 
 ### Added
+- **GitHub repository governance** (TASK-0015): SemVer (`VERSION` + tags), issue/PR templates, `CODEOWNERS`,
+  `SECURITY.md`, a CI pipeline (Go build/vet/test + frontend typecheck/build), this `CHANGELOG.md`, branch
+  protection on `main`, and a baseline of labels + milestones.
+- **Project documentation**: `README.md`, `docs/SETUP.md`, `docs/ARCHITECTURE.md`.
 - **Charging-station map & API** (TASK-0013): interactive keyless **Leaflet + OpenStreetMap** map with
   database-backed station markers and a click-to-detail panel. New `/v1/stations` endpoints — `GET` list
   (with optional bounding-box filter) and `GET /:id` open to any authenticated user; `POST`/`PUT`/`DELETE`

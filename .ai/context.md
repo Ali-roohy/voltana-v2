@@ -8,9 +8,16 @@
 
 - **Date**: 2026-06-03
 - **Active Phase**: **Phase 3 — in progress** (Phases 1 & 2 complete)
-- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) ✅ CLOSED 2026-06-03** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; full architect→dev_supervisor→security→qa chain green). First Phase-3 **feature** task done.
+- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) ✅ CLOSED 2026-06-03** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; full architect→dev_supervisor→security→qa chain green) + **TASK-0015 (GitHub governance) ✅ CLOSED 2026-06-03** (SemVer/`VERSION`, CI, templates, CODEOWNERS, SECURITY.md, CHANGELOG, labels/milestones; branch protection + `v0.3.0` tag applied at closure). First Phase-3 **feature** task done; release/governance baseline in place.
 
 ## Last Completed Task
+- TASK-0015 — GitHub Repository Setup / governance (**DONE / CLOSED with caveat** by qa_supervisor,
+  2026-06-03 — dev_supervisor ✅ (5/5) + qa ✅ (4/4); Phase-3 release/infra). SemVer (`VERSION`=0.3.0 + tags),
+  `.github/` issue+PR templates + CODEOWNERS + **`ci.yml`** (Go build/vet/test + frontend tsc/build, push & PR
+  to main, no deploy), `SECURITY.md`, promoted `changelog.md`→`CHANGELOG.md` (Keep a Changelog), labels +
+  milestones (v0.3.0/v0.4.0/v1.0.0). CI first run GREEN (#26872969711 @ `2777c47`, both jobs success).
+  **At-closure operator actions applied:** branch protection on `main` (both CI checks required, PR required,
+  no force-push/delete) + annotated **`v0.3.0` tag pushed**. Closes the Phase-3 governance gap.
 - TASK-0013 — Map + Real Station Data (**DONE / CLOSED** by qa_supervisor, 2026-06-03 — architect ✅ +
   dev_supervisor ✅ + security ✅ (admin boundary) + qa ✅ (9/9 live); **first Phase-3 feature task**).
   Replaced the iframe map with **keyless Leaflet + OpenStreetMap** rendering DB-backed station markers +
@@ -97,7 +104,7 @@
 | TASK-0007 | developer | DONE ✅ CLOSED with caveat (qa_supervisor signed off 2026-06-02) — **Phase-2 analytics foundation; battery SOH + recommendations** |
 | TASK-0008 | developer | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **completes Phase-2 analytics chain (0007→0008)** |
 | TASK-0014 | release (+ developer) | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **reproducible compose redeploy + nginx re-resolve + MailHog + SOH floor; clears the 0009/0007/0008 deploy debt** |
-| TASK-0015 | developer | **READY** — **Phase 3 (release/infra)**, release design FINALIZED 2026-06-03. GitHub repo governance: SemVer (`VERSION`=0.3.0 + tags), `.github/` issue+PR templates + CODEOWNERS, promote `changelog.md`→`CHANGELOG.md` (Keep a Changelog), `SECURITY.md`, **CI `ci.yml`** (Go build/vet/test + frontend tsc/build, no deploy), documented branch protection on `main`, labels (bug/feature/security/infra/phase-3/phase-4) + milestones (v0.3.0/v0.4.0/v1.0.0). All file contents specified in the handoff. |
+| TASK-0015 | release (+ developer) | **DONE ✅ CLOSED with caveat** (qa_supervisor signed off 2026-06-03) — **Phase-3 release/infra governance**. dev_supervisor ✅ (5/5) + qa ✅ (4/4 — CI green, labels, milestones, governance files). Created `VERSION`=0.3.0, `.github/` (issue+PR templates, CODEOWNERS, **`ci.yml`**), `SECURITY.md`, promoted `changelog.md`→`CHANGELOG.md`; labels + milestones (v0.3.0/v0.4.0/v1.0.0). CI first run GREEN @ `2777c47`. **At-closure operator actions applied:** branch protection on `main` + **`v0.3.0` tag pushed**. |
 | TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
 
 ## Current Focus
