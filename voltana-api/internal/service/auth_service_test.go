@@ -477,3 +477,24 @@ func TestResendVerification_AlreadyVerifiedNoSend(t *testing.T) {
 		t.Errorf("verified account should get no resend email, got %d", len(mail.sent))
 	}
 }
+
+func TestGetUser_ReturnsIdentityWithAdminFlag(t *testing.T) {
+	svc, users, _ := newTestService()
+	u := mustRegister(t, svc, "me@example.com", "password123")
+	users.byID[u.ID].IsAdmin = true
+
+	got, err := svc.GetUser(context.Background(), u.ID)
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	if got.Email != "me@example.com" || !got.IsAdmin {
+		t.Errorf("want me@example.com/admin=true, got %s/admin=%v", got.Email, got.IsAdmin)
+	}
+}
+
+func TestGetUser_UnknownID(t *testing.T) {
+	svc, _, _ := newTestService()
+	if _, err := svc.GetUser(context.Background(), uuid.New()); err == nil {
+		t.Fatal("want error for unknown user id, got nil")
+	}
+}

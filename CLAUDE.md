@@ -62,6 +62,20 @@ BACKLOG → READY → IN_PROGRESS → REVIEW → TESTING → DONE
 - Each task has explicit **Scope In / Scope Out** and **Acceptance Criteria**
 - Evidence (curl output, docker ps, test results) is required before a task is closed
 
+### Auto-Chain Rule
+
+When `developer` hands off to **REVIEW**, continue autonomously through the rest of the lifecycle:
+
+1. `dev_supervisor` review
+2. `security` review (if auth / admin / secrets / crypto related)
+3. `qa` verification
+4. `qa_supervisor` close
+5. `git commit` + `push` (per the Definition of Done Git Commit Rule)
+
+**Only pause for:** a **FAIL** verdict at any stage, an **operator decision** needed, or a **blocker**
+(e.g. missing credentials, a wedged build, an environment issue). Otherwise run the chain to DONE without
+waiting for per-step confirmation.
+
 ---
 
 ## Definition of Done

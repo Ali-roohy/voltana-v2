@@ -122,6 +122,8 @@ func main() {
 	// /v1 — all routes require a valid Bearer access token (Auth middleware).
 	v1 := r.Group("/v1", middleware.Auth(authSvc))
 	{
+		v1.GET("/me", authH.Me)
+
 		v1.GET("/cars", carH.List)
 		v1.POST("/cars", carH.Create)
 		v1.GET("/cars/:id", carH.Get)

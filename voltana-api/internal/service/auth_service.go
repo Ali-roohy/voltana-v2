@@ -271,6 +271,13 @@ func (s *AuthService) IsAdmin(ctx context.Context, userID uuid.UUID) (bool, erro
 	return user.IsAdmin, nil
 }
 
+// GetUser returns the user record for the given id (the authenticated user).
+// Backs GET /v1/me so the frontend can read identity + the is_admin flag, which
+// is intentionally NOT carried in the access token (see IsAdmin).
+func (s *AuthService) GetUser(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	return s.users.FindByID(ctx, userID)
+}
+
 // ValidateAccessToken parses and validates an access JWT, returning its claims.
 func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims, error) {
 	claims, err := s.parseToken(tokenStr, "access")

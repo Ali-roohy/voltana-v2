@@ -7,10 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"voltana-api/internal/middleware"
 	"voltana-api/internal/repository"
 	"voltana-api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const (
@@ -197,6 +199,24 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, "", h.isProd, true)
 	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
+}
+
+// Me godoc
+// GET /v1/me — identity for the authenticated user, including the is_admin flag
+// (which is deliberately not in the access token). Backs the frontend admin guard;
+// the API itself remains the real boundary via AdminOnly on write routes.
+func (h *AuthHandler) Me(c *gin.Context) {
+	user, err := h.auth.GetUser(c.Request.Context(), c.MustGet(middleware.UserIDKey).(uuid.UUID))
+	if err != nil {
+		log.Printf("me: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load user"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID,
+		"email":    user.Email,
+		"is_admin": user.IsAdmin,
+	})
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

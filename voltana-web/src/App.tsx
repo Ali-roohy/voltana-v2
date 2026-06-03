@@ -14,7 +14,9 @@ import Cars from "./pages/Cars";
 import Charging from "./pages/Charging";
 import Map from "./pages/Map";
 import Settings from "./pages/Settings";
+import AdminStations from "./pages/AdminStations";
 import NotFound from "./pages/NotFound";
+import { AdminRoute } from "./components/AdminRoute";
 import { BottomNav } from "./components/BottomNav";
 
 const queryClient = new QueryClient();
@@ -53,6 +55,14 @@ const SwipeableRoutes = () => {
           <Route path="/charging" element={<Charging />} />
           <Route path="/map" element={<Map />} />
           <Route path="/settings" element={<Settings />} />
+          <Route
+            path="/admin/stations"
+            element={
+              <AdminRoute>
+                <AdminStations />
+              </AdminRoute>
+            }
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

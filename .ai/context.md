@@ -11,6 +11,21 @@
 - **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) ✅ CLOSED 2026-06-03** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; full architect→dev_supervisor→security→qa chain green) + **TASK-0015 (GitHub governance) ✅ CLOSED 2026-06-03** (SemVer/`VERSION`, CI, templates, CODEOWNERS, SECURITY.md, CHANGELOG, labels/milestones; branch protection + `v0.3.0` tag applied at closure). First Phase-3 **feature** task done; release/governance baseline in place.
 
 ## Last Completed Task
+- TASK-0016 — Admin UI for Charging Stations (**DONE / CLOSED with caveat** by qa_supervisor, 2026-06-03 —
+  dev_supervisor ✅ (5/5) + security ✅ + qa ✅ (9/9 live) + qa_supervisor ✅; Phase-3 feature). Admin-only
+  `/admin/stations` page: station table + add/edit dialog with a shared `StationMapPicker` (Leaflet/OSM
+  click+drag marker) + delete `AlertDialog` confirm + `AdminRoute` guard + admin-only Header nav, all driving
+  the existing `/v1/stations` CRUD through extended `features/stations/{api,hooks}` (TanStack mutations,
+  ADR-002 — no `fetch()` in components). **Scope grew (operator-approved): added backend `GET /v1/me`**
+  (`{id,email,is_admin}`, authed-only, no sensitive data) because `is_admin` is deliberately absent from the
+  JWT (TASK-0013 instant-revocation) and no `/me` existed — `AdminOnly` left unchanged as the real boundary.
+  Deviations: API field is **`power_kw`** (not `max_power_kw`); the table hydrates operator/address via
+  per-row detail (list returns markers only). qa redeployed the api (in-container build, no wedge) + live
+  smoke 9/9: /v1/me admin=true / non-admin=false / 401; non-admin POST→403; admin POST 201 / PUT 200 / DELETE
+  204→404; lat=99→400. Host `go test` ✓ (+2 `GetUser` tests) · `tsc` 0 · `npm build` ✓. **⚠️ Caveat
+  (operator-accepted):** UI guard not clicked (no browser on host) — redirect logic code-verified + the
+  `/v1/me` it depends on proven live; the API admin boundary is fully proven live. **First time the Auto-Chain
+  Rule (dev_supervisor→security→qa→qa_supervisor→commit) ran end-to-end.**
 - TASK-0015 — GitHub Repository Setup / governance (**DONE / CLOSED with caveat** by qa_supervisor,
   2026-06-03 — dev_supervisor ✅ (5/5) + qa ✅ (4/4); Phase-3 release/infra). SemVer (`VERSION`=0.3.0 + tags),
   `.github/` issue+PR templates + CODEOWNERS + **`ci.yml`** (Go build/vet/test + frontend tsc/build, push & PR
@@ -106,7 +121,7 @@
 | TASK-0014 | release (+ developer) | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **reproducible compose redeploy + nginx re-resolve + MailHog + SOH floor; clears the 0009/0007/0008 deploy debt** |
 | TASK-0015 | release (+ developer) | **DONE ✅ CLOSED with caveat** (qa_supervisor signed off 2026-06-03) — **Phase-3 release/infra governance**. dev_supervisor ✅ (5/5) + qa ✅ (4/4 — CI green, labels, milestones, governance files). Created `VERSION`=0.3.0, `.github/` (issue+PR templates, CODEOWNERS, **`ci.yml`**), `SECURITY.md`, promoted `changelog.md`→`CHANGELOG.md`; labels + milestones (v0.3.0/v0.4.0/v1.0.0). CI first run GREEN @ `2777c47`. **At-closure operator actions applied:** branch protection on `main` + **`v0.3.0` tag pushed**. |
 | TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
-| TASK-0016 | feature → developer | **READY** — **Phase-3 feature** (pm spec 2026-06-03). Admin-only `/admin/stations` UI (table list + add/edit form w/ Leaflet marker preview + delete confirm + admin route guard) driving the existing `/v1/stations` CRUD. Frontend-only, no backend/DB/migration; builds on TASK-0013's `features/stations` data layer + `AdminOnly` boundary. Reviewer: dev_supervisor. **Depends on TASK-0013 (✅ CLOSED).** |
+| TASK-0016 | developer (git commit) | **DONE ✅ CLOSED with caveat** (qa_supervisor signed off 2026-06-03) — dev_supervisor ✅ (5/5) + security ✅ + qa ✅ (9/9 live) + qa_supervisor ✅. Admin-only `/admin/stations` UI (table + add/edit dialog w/ shared `StationMapPicker` Leaflet preview + delete `AlertDialog` confirm + `AdminRoute` guard + admin-only Header nav) driving `/v1/stations` CRUD via extended `features/stations/{api,hooks}`. **Scope grew (operator-approved): added backend `GET /v1/me`** ({id,email,is_admin}, authed-only) — `is_admin` isn't in the JWT (TASK-0013 instant-revocation) so the guard was otherwise unimplementable; `AdminOnly` unchanged as the real boundary. Deviations: API field `power_kw` (not `max_power_kw`); table hydrates operator/address via per-row detail. qa redeployed api (in-container build OK) + live smoke: /v1/me admin/non-admin/401, non-admin POST→403, admin POST 201/PUT 200/DELETE 204→404, lat=99→400. Host `go test` ✓ (+2 `GetUser`) · `tsc` 0 · `npm build` ✓. **⚠️ Caveat: UI guard not clicked (no browser) — code-verified + /v1/me proven live.** **Depends on TASK-0013 (✅ CLOSED).** |
 | TASK-0017 | architect → feature + developer | **BACKLOG** — **Phase-3 auth feature** (pm spec 2026-06-03). Additive passwordless **OTP login via Bale (preferred)/Telegram bot**: `POST /auth/otp/request` + `/auth/otp/verify`, 6-digit code in **Redis** (5-min TTL, single-use), rate limit 3/phone/15m, anti-enum 202; migration adds `phone`/`telegram_chat_id`/`bale_chat_id` to `users`; login-page tab "ورود با بله/تلگرام". Reuses TASK-0002 token contract; email auth unchanged. Reviewers: **dev_supervisor + security**. **Held at BACKLOG until architect designs the bot integration** (phone↔chat_id linking flow + `OTPSender` failover are the key risks). **Depends on TASK-0002 (✅ CLOSED).** |
 
 ## Current Focus

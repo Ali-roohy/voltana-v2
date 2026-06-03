@@ -5,6 +5,17 @@ interface TokenResponse {
   access_token: string;
 }
 
+// Identity for the authenticated user from GET /v1/me. `is_admin` is sourced here
+// (not from the access token, which deliberately omits it) so the UI can gate the
+// admin area. The API stays the real boundary — AdminOnly re-checks on every write.
+export interface Me {
+  id: string;
+  email: string;
+  is_admin: boolean;
+}
+
+export const getMe = () => api.get<Me>("/v1/me");
+
 export async function register(email: string, password: string): Promise<void> {
   await api.post("/auth/register", { email, password });
 }
