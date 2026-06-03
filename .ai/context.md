@@ -106,6 +106,7 @@
 | TASK-0014 | release (+ developer) | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **reproducible compose redeploy + nginx re-resolve + MailHog + SOH floor; clears the 0009/0007/0008 deploy debt** |
 | TASK-0015 | release (+ developer) | **DONE ✅ CLOSED with caveat** (qa_supervisor signed off 2026-06-03) — **Phase-3 release/infra governance**. dev_supervisor ✅ (5/5) + qa ✅ (4/4 — CI green, labels, milestones, governance files). Created `VERSION`=0.3.0, `.github/` (issue+PR templates, CODEOWNERS, **`ci.yml`**), `SECURITY.md`, promoted `changelog.md`→`CHANGELOG.md`; labels + milestones (v0.3.0/v0.4.0/v1.0.0). CI first run GREEN @ `2777c47`. **At-closure operator actions applied:** branch protection on `main` + **`v0.3.0` tag pushed**. |
 | TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
+| TASK-0016 | feature → developer | **READY** — **Phase-3 feature** (pm spec 2026-06-03). Admin-only `/admin/stations` UI (table list + add/edit form w/ Leaflet marker preview + delete confirm + admin route guard) driving the existing `/v1/stations` CRUD. Frontend-only, no backend/DB/migration; builds on TASK-0013's `features/stations` data layer + `AdminOnly` boundary. Reviewer: dev_supervisor. **Depends on TASK-0013 (✅ CLOSED).** |
 
 ## Current Focus
 - **🎉 Phase 1 — Solid Foundation: COMPLETE (2026-06-01).** All Phase-1 tasks closed by qa_supervisor:
@@ -141,14 +142,18 @@
     **Next: developer implements → dev_supervisor → security (admin boundary) → qa.**
   - Phase-3 **OBD/ELM327** (original roadmap) remains unscoped — a later researcher/pm pass.
 - **Release/infra follow-ups (track, non-blocking):**
-  - **(0015) Branch protection on `main` BLOCKED by GitHub plan.** The `gh api PUT
-    repos/Ali-roohy/voltana-v2/branches/main/protection` returns **403 — "Upgrade to GitHub Pro or make this
-    repository public to enable this feature."** `voltana-v2` is a **private repo on a free plan**, where
-    protected branches aren't available. TASK-0015 closed without it (all other deliverables in place +
-    verified; `v0.3.0` tag is on origin @ `2777c47`). To finish: either **(a)** upgrade to GitHub Pro / move
-    to an org plan that includes protection on private repos, then run the `gh api` PUT in `docs/SETUP.md §9`,
-    or **(b)** make the repo public (NOT done — operator decision; exposes full history). The required-check
-    contexts must match the CI job names `Go API — build · vet · test` and `Frontend — typecheck · build`.
+  - **(0015) Branch protection on `main` — ✅ APPLIED 2026-06-03.** Repo made **PUBLIC** (operator ran
+    `gh repo edit --visibility public`; secret-scan of full history was clean — no tracked `.env`, no secret
+    diffs) to unblock the feature on the free plan. Protection now active: both CI checks required
+    (`Go API — build · vet · test` + `Frontend — typecheck · build`, strict/up-to-date), **1 approving review**,
+    `enforce_admins=true`, no force-push, no deletions, conversation resolution required.
+    - **⚠️ Consequence — DoD direct-push workflow now BLOCKED.** With required PR + 1 approval + `enforce_admins`,
+      **nobody (incl. the owner) can push directly to `main`**, and a **solo maintainer cannot approve their own
+      PR → cannot merge**. The DoD "Git Commit Rule" (`git add . && commit && push` to main) no longer works as
+      written. **Decision needed (operator):** (a) relax to **0 required approvals** (PR + green checks still
+      enforced; owner can merge own PR — TASK-0015 spec §4's recommended solo-dev setting), or (b) set
+      `enforce_admins=false` so the owner bypasses, or (c) adopt a real PR-based flow. Until resolved, the
+      persona workflow's direct commits to `main` will be rejected.
   - **(0009)** `docker-compose.yml` `api` must pass `APP_URL` + `SMTP_*` and move off the wedge-prone
     in-container `Dockerfile` (host-binary + `Dockerfile.runtime`) so a clean `compose up` works.
   - **(0007, recurring)** stale-redeploy pattern + **nginx upstream-IP cache** (nginx caches `api`'s IP at
