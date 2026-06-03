@@ -64,6 +64,22 @@ BACKLOG → READY → IN_PROGRESS → REVIEW → TESTING → DONE
 
 ---
 
+## Definition of Done
+
+### Git Commit Rule
+
+After every task is closed by `qa_supervisor`, `dev_supervisor` **must** run:
+
+```
+git add .
+git commit -m "feat: TASK-XXXX — <task title>"
+git push
+```
+
+This is **MANDATORY** before the next task starts. The commit message must include the task ID and title.
+
+---
+
 ## Dashboard Sync Rule
 
 After every task status change (any `.ai/workflows/TASK-*.md` update), run:

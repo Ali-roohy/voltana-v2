@@ -8,9 +8,23 @@
 
 - **Date**: 2026-06-03
 - **Active Phase**: **Phase 3 — in progress** (Phases 1 & 2 complete)
-- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) — developer DONE → REVIEW** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; build/test/migration/live-smoke all green).
+- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + **TASK-0013 (Map + Real Station Data) ✅ CLOSED 2026-06-03** (Leaflet+OSM map, `/v1/stations` CRUD, `users.is_admin` + `AdminOnly`; full architect→dev_supervisor→security→qa chain green). First Phase-3 **feature** task done.
 
 ## Last Completed Task
+- TASK-0013 — Map + Real Station Data (**DONE / CLOSED** by qa_supervisor, 2026-06-03 — architect ✅ +
+  dev_supervisor ✅ + security ✅ (admin boundary) + qa ✅ (9/9 live); **first Phase-3 feature task**).
+  Replaced the iframe map with **keyless Leaflet + OpenStreetMap** rendering DB-backed station markers +
+  click→detail; added **`/v1/stations`** (GET list w/ optional bbox filter + GET `:id` open to any authed
+  user; POST/PUT/DELETE **admin-only**) behind a new **`users.is_admin`** role + **`AdminOnly` middleware**
+  doing a **fresh DB check** (not in JWT → instant revocation; 403 before lookup, no enumeration; bootstrap is
+  out-of-band SQL only). Migrations **000006** (is_admin) · **000007** (charging_stations: no user_id, DB
+  lat/lng + power CHECKs + `set_updated_at` trigger) · **000008** (5 Tehran seed) — applied live, schema
+  **v5→v8**. Frontend `features/stations/{api.ts,hooks.ts}` + react-leaflet (pinned **v4**; v5 needs React 19).
+  **Fixed in smoke:** `latitude:0`/`longitude:0` rejection → lat/lng now `*float64`+`required`, bounds in the
+  service. qa on a **clean `docker compose up -d --build api`** (in-container build 50.4s, no wedge): 5 markers,
+  non-admin POST→403, admin POST→201 (equator), PUT 200, DELETE 204→404, bbox subset + partial→400, seed
+  intact; host `go test` ok, `tsc` 0 + `npm build` ✓. **⚠️ Pending: dev_supervisor `git commit`+`push`** per the
+  new DoD Git Commit Rule before the next task.
 - TASK-0014 — Release & Infra Hardening (**DONE / CLOSED** by qa_supervisor, 2026-06-02 — release ✅ +
   dev_supervisor ✅ (5/5) + qa ✅ (5/5 acceptance, **zero manual deploy steps**) + qa_supervisor ✅; first
   Phase-3 task). Reproducible redeploy **`docker compose up -d --build api`** (Compose v2); nginx re-resolves
@@ -83,7 +97,7 @@
 | TASK-0007 | developer | DONE ✅ CLOSED with caveat (qa_supervisor signed off 2026-06-02) — **Phase-2 analytics foundation; battery SOH + recommendations** |
 | TASK-0008 | developer | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **completes Phase-2 analytics chain (0007→0008)** |
 | TASK-0014 | release (+ developer) | DONE ✅ CLOSED (qa_supervisor signed off 2026-06-02) — **reproducible compose redeploy + nginx re-resolve + MailHog + SOH floor; clears the 0009/0007/0008 deploy debt** |
-| TASK-0013 | dev_supervisor | **REVIEW** — **Phase 3**, developer impl DONE 2026-06-03 (Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`). Migrations 000006/000007/000008 **applied live (schema v8)**; `go test`/`tsc`/`build` green; live smoke green (5 markers, non-admin POST→403, equator 201, PUT 200, DELETE 204, bbox filter). Deviations: lat/lng req fields `*float64` (equator-0 bug caught in smoke); react-leaflet pinned v5→**v4** (v5 needs React 19, app is React 18). Next: dev_supervisor → security (admin boundary) → qa. |
+| TASK-0013 | developer (git commit) | **DONE ✅ CLOSED** (qa_supervisor signed off 2026-06-03) — **first Phase-3 feature task**; Leaflet+OSM map [keyless] + `/v1/stations` CRUD + `users.is_admin`/`AdminOnly`. architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live). **Pending: dev_supervisor git commit+push per new DoD Git Commit Rule.** |
 
 ## Current Focus
 - **🎉 Phase 1 — Solid Foundation: COMPLETE (2026-06-01).** All Phase-1 tasks closed by qa_supervisor:

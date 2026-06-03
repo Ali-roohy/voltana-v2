@@ -4,6 +4,43 @@
 
 ---
 
+## [TASK-0013] — 2026-06-03 — Map + Real Station Data — **Phase 3**
+
+Replaced the embedded-iframe map with an interactive **keyless Leaflet + OpenStreetMap** map rendering
+DB-backed charging-station markers, plus an **admin-only** station CRUD API gated by a new `users.is_admin`
+role. Closed by qa_supervisor: architect ✅ + dev_supervisor ✅ + security ✅ + qa ✅ (9/9 live).
+
+### Added
+- **Migrations** `000006_users_is_admin` (`is_admin BOOLEAN NOT NULL DEFAULT false`), `000007_charging_stations`
+  (shared reference table — no `user_id`; DB-level lat/lng + `power_kw>0` CHECKs + `set_updated_at` trigger),
+  `000008_seed_charging_stations` (5 Tehran demo stations). Applied live: schema **v5 → v8**.
+- **`/v1/stations` API** (under the JWT group): `GET` list (markers — id/name/lat/lng/connector/power, with an
+  optional `?min_lat&max_lat&min_lng&max_lng` bounding-box filter) + `GET /:id` detail — open to any authed
+  user; `POST`/`PUT`/`DELETE` — **admin-only**. Full handler→service→repository slice mirroring the cars module.
+- **`AdminOnly` middleware** + `AuthService.IsAdmin` — a **fresh DB check** per write (not baked into the JWT),
+  so revoking admin takes effect immediately; denies non-admins with **403 before any station lookup** (no
+  enumeration). Admin bootstrap is out-of-band SQL only (`UPDATE users SET is_admin=true …`).
+- **Frontend** `features/stations/{api.ts,hooks.ts}` (TanStack Query, no direct `fetch`) + rewritten
+  `pages/Map.tsx` (react-leaflet `MapContainer`/`TileLayer`/`Marker`/`Popup`, OSM tiles, click→detail panel).
+
+### Changed
+- `voltana-web/package.json` — **react-leaflet `^5.0.0` → `^4.2.1`** (v5 requires React 19; app is React 18.3.1)
+  + added `@types/leaflet`. Same component API, no code change.
+- `domain.User` / `user_repo` carry `is_admin`; `cmd/server/main.go` wires the station repo/service/handler + 5 routes.
+
+### Fixed
+- **`latitude:0` / `longitude:0` rejection** (caught in live smoke) — lat/lng request fields are now `*float64`
+  with `binding:"required"` (pointer presence distinguishes omitted→400 from a valid 0); bounds validated in
+  the service with descriptive messages. The equator now creates correctly.
+
+### Outcome
+- dev_supervisor ✅ + security ✅ (admin boundary) + qa ✅ (9/9). qa verified on a **clean `docker compose up -d
+  --build api`** (in-container Go build 50.4s, no wedge): 5 markers, non-admin POST→403, admin POST→201
+  (equator), PUT 200, DELETE 204→404, bbox subset + partial→400, seed intact; host `go test` ok, `tsc` 0 +
+  `npm build` ✓. **First Phase-3 feature task done** (after the 0014 infra hardening).
+
+---
+
 ## [TASK-0014] — 2026-06-02 — Release & Infra Hardening — **Phase 3**
 
 Made deployment reproducible and removed the manual hand-deploy friction that trailed TASK-0009/0007/0008
