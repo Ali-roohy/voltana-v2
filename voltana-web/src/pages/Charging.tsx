@@ -55,6 +55,7 @@ interface FormData {
   location: string;
   start_soc: string;
   end_soc: string;
+  odometer_km: string;
 }
 
 const emptyForm = (carId = ""): FormData => ({
@@ -67,6 +68,7 @@ const emptyForm = (carId = ""): FormData => ({
   location: "",
   start_soc: "",
   end_soc: "",
+  odometer_km: "",
 });
 
 const Charging = () => {
@@ -168,6 +170,7 @@ const Charging = () => {
       energy_offpeak_kwh: offpeak || null,
       start_soc: num(formData.start_soc),
       end_soc: num(formData.end_soc),
+      odometer_km: formData.odometer_km.trim() === "" ? null : parseInt(formData.odometer_km, 10),
       // cost omitted — the Go API computes it from the per-period energy × rates
     };
   };
@@ -239,6 +242,7 @@ const Charging = () => {
       location: session.location ?? "",
       start_soc: session.start_soc?.toString() ?? "",
       end_soc: session.end_soc?.toString() ?? "",
+      odometer_km: session.odometer_km?.toString() ?? "",
     });
     setIsDialogOpen(true);
   };
@@ -273,6 +277,7 @@ const Charging = () => {
       energy_offpeak_kwh: session.energy_offpeak_kwh,
       start_soc: session.start_soc,
       end_soc: session.end_soc,
+      odometer_km: session.odometer_km,
       cost: newCost,
     };
     try {
@@ -470,6 +475,11 @@ const Charging = () => {
                         {totalKwh(session).toFixed(2)} kWh
                       </span>
                       <span>{formatCost(getSessionCost(session))} تومان</span>
+                      {session.efficiency_kwh_per_100km != null && (
+                        <span className="font-medium text-foreground">
+                          {session.efficiency_kwh_per_100km.toFixed(1)} kWh/100km
+                        </span>
+                      )}
                     </div>
                   </CardHeader>
                 </div>
@@ -668,6 +678,13 @@ const Charging = () => {
                   <Input id="end_soc" type="number" min="0" max="100" value={formData.end_soc}
                     onChange={(e) => setFormData({ ...formData, end_soc: e.target.value })} placeholder="80" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="odometer_km">{language === "fa" ? "کیلومتر شمار (اختیاری)" : "Odometer (km, optional)"}</Label>
+                <Input id="odometer_km" type="number" min="0" step="1" value={formData.odometer_km}
+                  onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
+                  placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
               </div>
 
               <DialogFooter>

@@ -24,8 +24,18 @@ type ChargingSession struct {
 	EndSOC           *int       `json:"end_soc"`
 	Cost             *float64   `json:"cost"`
 	Notes            *string    `json:"notes"`
+	OdometerKM       *int       `json:"odometer_km"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+
+	// PrevOdometerKM is the immediately-prior session's odometer for the same car
+	// (by time), supplied by the repository via a window function. Transient —
+	// never serialized; the service uses it to derive EfficiencyKWhPer100km.
+	PrevOdometerKM *int `json:"-"`
+	// EfficiencyKWhPer100km is the derived consumption (kwh_charged / km-driven ×
+	// 100) when this and the previous session both have an odometer reading and the
+	// distance is positive; otherwise nil. Computed in the service, not stored.
+	EfficiencyKWhPer100km *float64 `json:"efficiency_kwh_per_100km"`
 }
 
 // ChargingInput carries the mutable fields of a charging session for create/update.
@@ -44,6 +54,7 @@ type ChargingInput struct {
 	EndSOC           *int
 	Cost             *float64
 	Notes            *string
+	OdometerKM       *int
 }
 
 // ChargingFilter narrows a session list. Nil fields are ignored.

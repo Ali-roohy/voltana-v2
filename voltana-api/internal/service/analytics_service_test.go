@@ -396,9 +396,18 @@ func TestAnalytics_DashboardAggregates(t *testing.T) {
 	c1, _ := carRepo.Create(ctx, owner, repository.CarInput{Name: "A", OdometerKM: 10000})
 	carRepo.Create(ctx, owner, repository.CarInput{Name: "B", OdometerKM: 5000})
 
-	// Three sessions: total 60 kWh, total cost 1500.
-	for _, kc := range []struct{ kwh, cost float64 }{{20, 500}, {25, 600}, {15, 400}} {
-		chRepo.Create(ctx, owner, domain.ChargingInput{CarID: c1.ID, StartedAt: time.Now(), KWhCharged: ptr(kc.kwh), Cost: ptr(kc.cost)})
+	// Three sessions (increasing time + odometer): total 60 kWh, total cost 1500.
+	// Avg efficiency is now measured from session odometer deltas (TASK-0018):
+	//   s1→s2: 300 km, 25 kWh · s2→s3: 200 km, 15 kWh → 40 kWh over 500 km.
+	base := time.Now().Add(-3 * time.Hour)
+	for i, kc := range []struct {
+		kwh, cost float64
+		odo       int
+	}{{20, 500, 1000}, {25, 600, 1300}, {15, 400, 1500}} {
+		chRepo.Create(ctx, owner, domain.ChargingInput{
+			CarID: c1.ID, StartedAt: base.Add(time.Duration(i) * time.Hour),
+			KWhCharged: ptr(kc.kwh), Cost: ptr(kc.cost), OdometerKM: ptr(kc.odo),
+		})
 	}
 
 	stats, err := svc.GetDashboard(ctx, owner)
@@ -408,9 +417,9 @@ func TestAnalytics_DashboardAggregates(t *testing.T) {
 	if stats.TotalKWh != 60 || stats.TotalCost != 1500 || stats.TotalKM != 15000 || stats.SessionCount != 3 {
 		t.Errorf("stats = %+v, want kwh=60 cost=1500 km=15000 count=3", stats)
 	}
-	// avg = 60 / (15000/100) = 60/150 = 0.40 kWh/100km
-	if stats.AvgKWhPer100KM == nil || *stats.AvgKWhPer100KM != 0.40 {
-		t.Errorf("avg = %v, want 0.40", stats.AvgKWhPer100KM)
+	// avg = 40 kWh / (500 km / 100) = 40/5 = 8.0 kWh/100km (session-odometer-derived)
+	if stats.AvgKWhPer100KM == nil || *stats.AvgKWhPer100KM != 8.0 {
+		t.Errorf("avg = %v, want 8.0", stats.AvgKWhPer100KM)
 	}
 }
 

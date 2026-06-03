@@ -14,6 +14,10 @@ export interface ChargingSession {
   end_soc: number | null;
   cost: number | null;
   notes: string | null;
+  odometer_km: number | null;
+  // Derived server-side (kWh/100km) when this and the previous session both have
+  // an odometer reading with a positive distance; otherwise null.
+  efficiency_kwh_per_100km: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +37,7 @@ export interface ChargingInput {
   start_soc?: number | null;
   end_soc?: number | null;
   cost?: number | null;
+  odometer_km?: number | null;
 }
 
 interface ListResponse<T> {

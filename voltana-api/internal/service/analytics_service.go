@@ -126,8 +126,15 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context, userID uuid.UUID) (
 		TotalKM:      totalKM,
 		SessionCount: count,
 	}
-	if totalKM > 0 {
-		eff := round2(totalKWh / (float64(totalKM) / 100))
+	// Average efficiency is measured from per-session odometer deltas (TASK-0018):
+	// energy over odometer-derived distance across consecutive logged sessions —
+	// not from the cars' current odometer. Null until such session data exists.
+	effKWh, effKM, err := s.sessions.EfficiencyAggregateByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if effKM > 0 {
+		eff := round2(effKWh / (effKM / 100))
 		stats.AvgKWhPer100KM = &eff
 	}
 

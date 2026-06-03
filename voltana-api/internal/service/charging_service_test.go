@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ func (m *mockChargingRepo) Create(_ context.Context, userID uuid.UUID, in domain
 		Location: in.Location, KWhCharged: in.KWhCharged, EnergyPeakKWh: in.EnergyPeakKWh,
 		EnergyMidKWh: in.EnergyMidKWh, EnergyOffpeakKWh: in.EnergyOffpeakKWh,
 		StartSOC: in.StartSOC, EndSOC: in.EndSOC, Cost: in.Cost, Notes: in.Notes,
+		OdometerKM: in.OdometerKM,
 	}
 	m.store[s.ID] = s
 	return &s, nil
@@ -43,6 +45,24 @@ func (m *mockChargingRepo) ListByUser(_ context.Context, userID uuid.UUID, f dom
 	for _, s := range m.store {
 		if s.UserID == userID {
 			items = append(items, s)
+		}
+	}
+	// Mirror the SQL window: per car (by start time) set PrevOdometerKM to the
+	// previous session's odometer, so the service's efficiency calc is exercised.
+	order := append([]domain.ChargingSession(nil), items...)
+	sort.Slice(order, func(i, j int) bool { return order[i].StartedAt.Before(order[j].StartedAt) })
+	prevByCar := map[uuid.UUID]*int{}
+	prevOf := map[uuid.UUID]*int{}
+	for i := range order {
+		car := order[i].CarID
+		if p, ok := prevByCar[car]; ok {
+			prevOf[order[i].ID] = p
+		}
+		prevByCar[car] = order[i].OdometerKM
+	}
+	for i := range items {
+		if p, ok := prevOf[items[i].ID]; ok {
+			items[i].PrevOdometerKM = p
 		}
 	}
 	return items, len(items), nil
@@ -63,6 +83,7 @@ func (m *mockChargingRepo) Update(_ context.Context, userID, id uuid.UUID, in do
 	}
 	s.CarID, s.StartedAt, s.EndedAt, s.Cost = in.CarID, in.StartedAt, in.EndedAt, in.Cost
 	s.EnergyPeakKWh, s.EnergyMidKWh, s.EnergyOffpeakKWh = in.EnergyPeakKWh, in.EnergyMidKWh, in.EnergyOffpeakKWh
+	s.OdometerKM, s.KWhCharged = in.OdometerKM, in.KWhCharged
 	m.store[id] = s
 	return &s, nil
 }
@@ -92,6 +113,35 @@ func (m *mockChargingRepo) AggregateByUser(_ context.Context, userID uuid.UUID) 
 		}
 	}
 	return totalKWh, totalCost, count, nil
+}
+
+// EfficiencyAggregateByUser mirrors the SQL: per car, ordered by start time, sum
+// energy + (odometer - prev odometer) over consecutive pairs with both readings,
+// a positive delta, and known energy.
+func (m *mockChargingRepo) EfficiencyAggregateByUser(_ context.Context, userID uuid.UUID) (float64, float64, error) {
+	byCar := map[uuid.UUID][]domain.ChargingSession{}
+	for _, s := range m.store {
+		if s.UserID == userID {
+			byCar[s.CarID] = append(byCar[s.CarID], s)
+		}
+	}
+	var sumKWh, sumKM float64
+	for _, list := range byCar {
+		sort.Slice(list, func(i, j int) bool { return list[i].StartedAt.Before(list[j].StartedAt) })
+		for i := 1; i < len(list); i++ {
+			prev, cur := list[i-1], list[i]
+			if prev.OdometerKM == nil || cur.OdometerKM == nil || cur.KWhCharged == nil {
+				continue
+			}
+			km := *cur.OdometerKM - *prev.OdometerKM
+			if km <= 0 {
+				continue
+			}
+			sumKWh += *cur.KWhCharged
+			sumKM += float64(km)
+		}
+	}
+	return sumKWh, sumKM, nil
 }
 
 // ── mock SettingsRepository ───────────────────────────────────────────────────
@@ -147,6 +197,68 @@ func newChargingSvc(t *testing.T, owner uuid.UUID, rates repository.Rates) (*ser
 
 func baseInput(carID uuid.UUID) domain.ChargingInput {
 	return domain.ChargingInput{CarID: carID, StartedAt: time.Now()}
+}
+
+func TestCharging_PerSessionEfficiency(t *testing.T) {
+	owner := uuid.New()
+	svc, carID, _ := newChargingSvc(t, owner, repository.Rates{})
+	ctx := context.Background()
+
+	// Session 1: odometer 1000, earlier.
+	in1 := domain.ChargingInput{CarID: carID, StartedAt: time.Now().Add(-2 * time.Hour), OdometerKM: ptr(1000)}
+	if _, err := svc.Create(ctx, owner, in1); err != nil {
+		t.Fatalf("create s1: %v", err)
+	}
+	// Session 2: odometer 1300 (300 km later), 45 kWh → 45 / (300/100) = 15.0 kWh/100km.
+	in2 := domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(1300), KWhCharged: ptr(45.0)}
+	if _, err := svc.Create(ctx, owner, in2); err != nil {
+		t.Fatalf("create s2: %v", err)
+	}
+
+	items, _, err := svc.List(ctx, owner, domain.ChargingFilter{}, 100, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var s1, s2 *domain.ChargingSession
+	for i := range items {
+		switch *items[i].OdometerKM {
+		case 1000:
+			s1 = &items[i]
+		case 1300:
+			s2 = &items[i]
+		}
+	}
+	if s1 == nil || s2 == nil {
+		t.Fatal("expected both sessions in list")
+	}
+	if s1.EfficiencyKWhPer100km != nil {
+		t.Errorf("s1 has no prior reading → efficiency should be nil, got %v", *s1.EfficiencyKWhPer100km)
+	}
+	if s2.EfficiencyKWhPer100km == nil || *s2.EfficiencyKWhPer100km != 15.0 {
+		t.Errorf("s2 efficiency: want 15.0, got %v", s2.EfficiencyKWhPer100km)
+	}
+}
+
+func TestCharging_EfficiencyNilWhenOdometerNotIncreasing(t *testing.T) {
+	owner := uuid.New()
+	svc, carID, _ := newChargingSvc(t, owner, repository.Rates{})
+	ctx := context.Background()
+	// Same odometer (km_driven = 0) → no efficiency.
+	if _, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now().Add(-time.Hour), OdometerKM: ptr(500)}); err != nil {
+		t.Fatalf("create s1: %v", err)
+	}
+	if _, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(500), KWhCharged: ptr(20.0)}); err != nil {
+		t.Fatalf("create s2: %v", err)
+	}
+	items, _, err := svc.List(ctx, owner, domain.ChargingFilter{}, 100, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for i := range items {
+		if items[i].EfficiencyKWhPer100km != nil {
+			t.Errorf("zero distance → efficiency must be nil, got %v", *items[i].EfficiencyKWhPer100km)
+		}
+	}
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

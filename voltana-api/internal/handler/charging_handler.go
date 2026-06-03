@@ -35,6 +35,7 @@ type chargingRequest struct {
 	EndSOC           *int       `json:"end_soc"            binding:"omitempty,min=0,max=100"`
 	Cost             *float64   `json:"cost"               binding:"omitempty,gte=0"`
 	Notes            *string    `json:"notes"`
+	OdometerKM       *int       `json:"odometer_km"        binding:"omitempty,min=0"`
 }
 
 func (req chargingRequest) toInput() domain.ChargingInput {
@@ -51,6 +52,7 @@ func (req chargingRequest) toInput() domain.ChargingInput {
 		EndSOC:           req.EndSOC,
 		Cost:             req.Cost,
 		Notes:            req.Notes,
+		OdometerKM:       req.OdometerKM,
 	}
 }
 

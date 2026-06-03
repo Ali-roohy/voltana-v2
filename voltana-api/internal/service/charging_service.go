@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"voltana-api/internal/domain"
@@ -68,7 +69,29 @@ func (s *ChargingService) Create(ctx context.Context, userID uuid.UUID, in domai
 
 func (s *ChargingService) List(ctx context.Context, userID uuid.UUID, f domain.ChargingFilter, limit, offset int) ([]domain.ChargingSession, int, error) {
 	limit, offset = ClampPagination(limit, offset)
-	return s.sessions.ListByUser(ctx, userID, f, limit, offset)
+	items, total, err := s.sessions.ListByUser(ctx, userID, f, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range items {
+		setSessionEfficiency(&items[i])
+	}
+	return items, total, nil
+}
+
+// setSessionEfficiency derives kWh/100km for a session from its odometer and the
+// previous session's odometer (supplied by the repo). Set only when both readings
+// exist, energy is known, and the distance is positive; otherwise left nil.
+func setSessionEfficiency(s *domain.ChargingSession) {
+	if s.OdometerKM == nil || s.PrevOdometerKM == nil || s.KWhCharged == nil {
+		return
+	}
+	km := *s.OdometerKM - *s.PrevOdometerKM
+	if km <= 0 {
+		return
+	}
+	eff := math.Round((*s.KWhCharged/(float64(km)/100))*100) / 100
+	s.EfficiencyKWhPer100km = &eff
 }
 
 func (s *ChargingService) Get(ctx context.Context, userID, id uuid.UUID) (*domain.ChargingSession, error) {
@@ -176,6 +199,9 @@ func validateChargingInput(in domain.ChargingInput) error {
 	}
 	if err := validateSOC(in.EndSOC, "end_soc"); err != nil {
 		return err
+	}
+	if in.OdometerKM != nil && *in.OdometerKM < 0 {
+		return fmt.Errorf("%w: odometer_km must be >= 0", ErrValidation)
 	}
 	for name, v := range map[string]*float64{
 		"kwh_charged":        in.KWhCharged,
