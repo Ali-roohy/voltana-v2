@@ -189,3 +189,47 @@ go vet ./...
 | Verification link never arrives | Set `SMTP_HOST=mailhog`/`SMTP_PORT=1025` and check http://localhost:8025, or use the SQL flip in §4. |
 | `403 admin privileges required` on station writes | Your user isn't admin — run the §4 promote SQL. |
 | Frontend can't reach API | Ensure `VITE_API_URL=/` and the stack is up (`curl http://localhost/health`). |
+
+---
+
+## 9. Contributing & Branch Protection
+
+The `main` branch is protected — all changes land via pull request, and CI must pass before merge.
+
+### Branch-protection rules (configured on `main`)
+
+- **No direct pushes to `main`** — every change goes through a PR.
+- **Require a pull request before merging** (≥ 1 approving review; CODEOWNERS auto-requested).
+- **Require status checks to pass** before merging, with **"branches up to date"** enforced. Required checks:
+  - `Go API — build · vet · test`
+  - `Frontend — typecheck · build`
+- **Require conversation resolution** before merging.
+- **No force pushes**, **no branch deletion** on `main`.
+
+### Applying the rules (GitHub CLI)
+
+> Status checks can only be marked *required* after they've run at least once — open the first PR, let CI run,
+> then apply this. The check contexts must exactly match the CI job `name:` values in `.github/workflows/ci.yml`.
+
+```bash
+gh api -X PUT repos/Ali-roohy/voltana-v2/branches/main/protection \
+  -H "Accept: application/vnd.github+json" \
+  -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[checks][][context]=Go API — build · vet · test' \
+  -f 'required_status_checks[checks][][context]=Frontend — typecheck · build' \
+  -F 'enforce_admins=true' \
+  -F 'required_pull_request_reviews[required_approving_review_count]=1' \
+  -F 'restrictions=' \
+  -F 'allow_force_pushes=false' \
+  -F 'allow_deletions=false'
+```
+
+### Release flow (Semantic Versioning)
+
+1. Update [`../VERSION`](../VERSION) and move `CHANGELOG.md`'s `Unreleased` entries into a new version section
+   with the date.
+2. Merge the PR to `main` (CI green).
+3. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+
+Bump rules (pre-1.0): **MINOR** when a feature task closes (new endpoints / backward-compatible migration),
+**PATCH** for fixes/docs/infra, **MAJOR** reserved for the v1.0.0 commercial release.

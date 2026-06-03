@@ -1,0 +1,14 @@
+# Default owner for everything
+*                       @Ali-roohy
+
+# Backend
+/voltana-api/           @Ali-roohy
+/migrations/            @Ali-roohy
+
+# Frontend
+/voltana-web/           @Ali-roohy
+
+# Infra / release
+/.github/               @Ali-roohy
+/docker-compose.yml     @Ali-roohy
+/nginx/                 @Ali-roohy

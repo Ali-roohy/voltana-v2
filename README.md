@@ -8,7 +8,7 @@ V2 replaces the original Supabase MVP with a fully self-hosted **Go + PostgreSQL
 Docker does. The development environment is WSL2; the deployment target is a small Ubuntu VPS
 (2 vCPU / 4 GB RAM) via Docker Compose.
 
-> **Status:** Phases 1 & 2 complete; Phase 3 in progress. See [`changelog.md`](changelog.md) for the full
+> **Status:** Phases 1 & 2 complete; Phase 3 in progress. See [`CHANGELOG.md`](CHANGELOG.md) for the full
 > history and [`.ai/context.md`](.ai/context.md) for live project state.
 
 ---
@@ -87,7 +87,7 @@ voltana_V2/
 ├── docker-compose.yml    # full self-hosted stack
 ├── .env.example          # backend env template (copy → .env)
 ├── docs/                 # SETUP + ARCHITECTURE guides
-├── changelog.md          # per-task changelog
+├── CHANGELOG.md          # version changelog (Keep a Changelog)
 └── .ai/                  # workflow specs, ADRs, live project context
 ```
 
@@ -109,7 +109,7 @@ voltana_V2/
 |---|---|
 | **[docs/SETUP.md](docs/SETUP.md)** | Prerequisites, `.env` config, first run, creating the first admin, MailHog, frontend dev |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Layer diagram, folder structure, full API reference, data model, auth & admin flows |
-| **[changelog.md](changelog.md)** | Per-task changelog |
+| **[CHANGELOG.md](CHANGELOG.md)** | Version changelog (Keep a Changelog) |
 | **[.ai/spec/](.ai/spec/)** | Accepted Architecture Decision Records (ADR-001…003) |
 
 ---
