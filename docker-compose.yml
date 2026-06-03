@@ -58,6 +58,10 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@voltana.app}
+      BALE_BOT_TOKEN: ${BALE_BOT_TOKEN:-}
+      BALE_BOT_USERNAME: ${BALE_BOT_USERNAME:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -54,6 +54,15 @@ type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
+type otpRequestBody struct {
+	Phone string `json:"phone" binding:"required"`
+}
+
+type otpVerifyBody struct {
+	Phone string `json:"phone" binding:"required"`
+	Code  string `json:"code"  binding:"required,len=6"`
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 // Register godoc
@@ -205,6 +214,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // GET /v1/me — identity for the authenticated user, including the is_admin flag
 // (which is deliberately not in the access token). Backs the frontend admin guard;
 // the API itself remains the real boundary via AdminOnly on write routes.
+// Also returns phone/bot linked status for the Settings bot-link card.
 func (h *AuthHandler) Me(c *gin.Context) {
 	user, err := h.auth.GetUser(c.Request.Context(), c.MustGet(middleware.UserIDKey).(uuid.UUID))
 	if err != nil {
@@ -213,10 +223,65 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":       user.ID,
-		"email":    user.Email,
-		"is_admin": user.IsAdmin,
+		"id":               user.ID,
+		"email":            user.Email,
+		"is_admin":         user.IsAdmin,
+		"phone":            user.Phone,
+		"bale_linked":      user.BaleChatID != nil,
+		"telegram_linked":  user.TelegramChatID != nil,
 	})
+}
+
+// OTPRequest godoc
+// POST /auth/otp/request — sends a 6-digit OTP to the user's linked bot chat.
+// Always returns 202 regardless of whether the phone/chat exists (anti-enum).
+func (h *AuthHandler) OTPRequest(c *gin.Context) {
+	var req otpRequestBody
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Still 202: don't reveal whether the phone format was invalid.
+		c.JSON(http.StatusAccepted, gin.H{"message": "if the account is linked, an OTP has been sent"})
+		return
+	}
+
+	if err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP()); err != nil {
+		if errors.Is(err, service.ErrRateLimitExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
+			return
+		}
+		log.Printf("otp/request: unexpected error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "request failed"})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"message": "if the account is linked, an OTP has been sent"})
+}
+
+// OTPVerify godoc
+// POST /auth/otp/verify — validates the OTP and issues tokens.
+func (h *AuthHandler) OTPVerify(c *gin.Context) {
+	var req otpVerifyBody
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	access, refresh, err := h.auth.CompleteOTPLogin(c.Request.Context(), req.Phone, req.Code, c.ClientIP())
+	if err != nil {
+		if errors.Is(err, service.ErrOTPInvalid) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired code", "code": "INVALID_OTP"})
+			return
+		}
+		if errors.Is(err, service.ErrRateLimitExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts"})
+			return
+		}
+		log.Printf("otp/verify: unexpected error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "verification failed"})
+		return
+	}
+
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

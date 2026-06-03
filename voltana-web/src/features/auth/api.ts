@@ -12,6 +12,9 @@ export interface Me {
   id: string;
   email: string;
   is_admin: boolean;
+  phone: string | null;
+  bale_linked: boolean;
+  telegram_linked: boolean;
 }
 
 export const getMe = () => api.get<Me>("/v1/me");
@@ -37,6 +40,18 @@ export async function verifyEmail(token: string): Promise<string> {
 // (the server replies 202 regardless of whether the account exists/is verified).
 export async function resendVerification(email: string): Promise<void> {
   await api.post("/auth/resend-verification", { email });
+}
+
+// Request a 6-digit OTP sent to the user's linked Bale/Telegram bot chat.
+// Always resolves (server replies 202 regardless of whether the phone is linked).
+export async function requestOTP(phone: string): Promise<void> {
+  await api.post("/auth/otp/request", { phone });
+}
+
+// Verify a 6-digit OTP and log in. Sets the in-memory access token on success.
+export async function verifyOTP(phone: string, code: string): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/otp/verify", { phone, code });
+  authStore.setToken(res.access_token);
 }
 
 export async function logout(): Promise<void> {

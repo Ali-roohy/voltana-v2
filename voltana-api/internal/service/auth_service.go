@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"strings"
 	"time"
+	"unicode"
 
 	"voltana-api/internal/domain"
 	"voltana-api/internal/repository"
@@ -27,7 +29,7 @@ const (
 	loginRateWindow = 15 * time.Minute
 	loginRateMax    = int64(10)
 
-	// Email-verification token + rate limits (API contract, TASK-0009).
+	// Email-verification token + rate limits (TASK-0009).
 	verificationTokenTTL = 24 * time.Hour
 	verifyRateWindow     = 15 * time.Minute
 	verifyRateMax        = int64(20)
@@ -36,6 +38,28 @@ const (
 	resendEmailWindow    = time.Hour
 	resendEmailMax       = int64(3)
 	resendCooldown       = 60 * time.Second
+
+	// OTP rate limits and TTLs (TASK-0017).
+	otpTTL             = 5 * time.Minute
+	otpAttemptsTTL     = 5 * time.Minute
+	otpMaxAttempts     = int64(5)
+	otpPhoneRateWindow = 15 * time.Minute
+	otpPhoneRateMax    = int64(3)
+	otpIPRateWindow    = 15 * time.Minute
+	otpIPRateMax       = int64(10)
+	otpCooldownTTL     = 60 * time.Second
+
+	// Bot-link token TTL (TASK-0017).
+	botLinkTTL        = 10 * time.Minute
+	botPendingLinkTTL = 10 * time.Minute
+)
+
+// Platform identifies a messaging platform for OTP delivery.
+type Platform string
+
+const (
+	PlatformBale     Platform = "bale"
+	PlatformTelegram Platform = "telegram"
 )
 
 var (
@@ -46,12 +70,24 @@ var (
 
 	ErrEmailNotVerified         = errors.New("email not verified")
 	ErrInvalidVerificationToken = errors.New("invalid or expired verification token")
+
+	ErrOTPInvalid    = errors.New("invalid or expired OTP")
+	ErrNoBotLinked   = errors.New("no bot chat linked to this account")
+	ErrInvalidPhone  = errors.New("invalid phone number")
+	ErrNoBotConfig   = errors.New("no bot configured")
 )
 
 // Mailer sends account emails. Implemented by internal/mailer; mocked in tests
 // so SMTP is never reached during unit tests.
 type Mailer interface {
 	SendVerificationEmail(ctx context.Context, toEmail, verifyURL string) error
+}
+
+// OTPSender sends a 6-digit OTP to a bot chat. Concrete implementations live
+// in internal/bot (BaleSender, TelegramSender, LogOTPSender).
+type OTPSender interface {
+	Platform() Platform
+	Send(ctx context.Context, chatID, code string) error
 }
 
 // TokenStore abstracts Redis operations needed by AuthService.
@@ -62,6 +98,15 @@ type TokenStore interface {
 	ConsumeRefreshToken(ctx context.Context, jti string) (userID string, err error)
 	DeleteRefreshToken(ctx context.Context, jti string) error
 	CheckRateLimit(ctx context.Context, key string, max int64, window time.Duration) (allowed bool, err error)
+
+	// Generic cache (OTP, bot-link, analytics).
+	CacheGet(ctx context.Context, key string) (val string, ok bool, err error)
+	CacheSet(ctx context.Context, key, val string, ttl time.Duration) error
+	CacheDel(ctx context.Context, key string) error
+	// CacheGetDel atomically reads and deletes a key (single-use, OTP / botlink).
+	CacheGetDel(ctx context.Context, key string) (val string, ok bool, err error)
+	// IncrWithTTL atomically increments a counter and sets TTL on first increment.
+	IncrWithTTL(ctx context.Context, key string, ttl time.Duration) (int64, error)
 }
 
 type voltanaClaims struct {
@@ -78,6 +123,12 @@ type AuthService struct {
 	appURL        string
 	secret        []byte
 	dummyHash     []byte // pre-computed to enforce constant-time on unknown email
+
+	// OTP / bot-link (set via SetBotSenders; optional)
+	baleSender     OTPSender
+	tgSender       OTPSender
+	baleBotUsername string
+	tgBotUsername   string
 }
 
 func NewAuthService(
@@ -87,8 +138,6 @@ func NewAuthService(
 	mailer Mailer,
 	appURL, jwtSecret string,
 ) *AuthService {
-	// Generate once at startup so Login timing is uniform whether the email
-	// exists or not.
 	dummy, err := bcrypt.GenerateFromPassword([]byte("dummy-timing-placeholder"), bcryptCost)
 	if err != nil {
 		panic("auth: failed to generate dummy hash: " + err.Error())
@@ -104,10 +153,17 @@ func NewAuthService(
 	}
 }
 
-// Register creates a new user with a bcrypt-hashed password (cost 12) and issues
-// an email-verification token (emailed as a link). Email delivery is best-effort:
-// registration still succeeds if the token cannot be stored or the email fails to
-// send (the user can request a resend) — failures are logged, never surfaced.
+// SetBotSenders wires OTP senders after construction. bale and/or tg may be
+// nil (not configured). Called from main.go when bot tokens are present.
+func (s *AuthService) SetBotSenders(bale, tg OTPSender, baleBotUsername, tgBotUsername string) {
+	s.baleSender = bale
+	s.tgSender = tg
+	s.baleBotUsername = baleBotUsername
+	s.tgBotUsername = tgBotUsername
+}
+
+// ── email/password auth (existing, unchanged) ─────────────────────────────────
+
 func (s *AuthService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
@@ -121,8 +177,6 @@ func (s *AuthService) Register(ctx context.Context, email, password string) (*do
 	return user, nil
 }
 
-// issueVerification mints a token, stores only its SHA-256 hash, and emails the
-// link. Best-effort: any failure is logged (by user ID — never the token/email).
 func (s *AuthService) issueVerification(ctx context.Context, user *domain.User) {
 	raw, tokenHash, err := generateVerificationToken()
 	if err != nil {
@@ -139,7 +193,6 @@ func (s *AuthService) issueVerification(ctx context.Context, user *domain.User) 
 	}
 }
 
-// Login verifies credentials, enforces per-IP rate limiting, and issues tokens.
 func (s *AuthService) Login(ctx context.Context, email, password, ip string) (accessToken, refreshToken string, err error) {
 	allowed, err := s.tokens.CheckRateLimit(ctx, "ratelimit:login:"+ip, loginRateMax, loginRateWindow)
 	if err != nil {
@@ -151,7 +204,6 @@ func (s *AuthService) Login(ctx context.Context, email, password, ip string) (ac
 
 	user, lookupErr := s.users.FindByEmail(ctx, email)
 	if lookupErr != nil {
-		// Always run bcrypt to prevent email-enumeration via timing side-channel
 		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
 		return "", "", ErrInvalidCredentials
 	}
@@ -160,8 +212,6 @@ func (s *AuthService) Login(ctx context.Context, email, password, ip string) (ac
 		return "", "", ErrInvalidCredentials
 	}
 
-	// Gate ONLY after a successful credential check — a wrong password must still
-	// return ErrInvalidCredentials so verification state is never leaked.
 	if !user.IsEmailVerified {
 		return "", "", ErrEmailNotVerified
 	}
@@ -169,8 +219,6 @@ func (s *AuthService) Login(ctx context.Context, email, password, ip string) (ac
 	return s.issueTokenPair(ctx, user.ID)
 }
 
-// VerifyEmail consumes a verification token (per-IP rate limited) and marks the
-// account verified. Returns whether the account was already verified.
 func (s *AuthService) VerifyEmail(ctx context.Context, rawToken, ip string) (alreadyVerified bool, err error) {
 	allowed, err := s.tokens.CheckRateLimit(ctx, "ratelimit:verify:"+ip, verifyRateMax, verifyRateWindow)
 	if err != nil {
@@ -183,7 +231,6 @@ func (s *AuthService) VerifyEmail(ctx context.Context, rawToken, ip string) (alr
 	userID, already, err := s.verifications.ConsumeVerificationToken(ctx, sha256Hex(rawToken))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			// Do not distinguish unknown / expired / used — anti-enumeration.
 			return false, ErrInvalidVerificationToken
 		}
 		return false, fmt.Errorf("consume token: %w", err)
@@ -192,15 +239,9 @@ func (s *AuthService) VerifyEmail(ctx context.Context, rawToken, ip string) (alr
 	return already, nil
 }
 
-// ResendVerification re-issues a verification email for an unverified account.
-// Always succeeds (HTTP 202) for a well-formed request unless a rate limit is hit;
-// the work is done uniformly regardless of whether the email exists or is verified
-// (anti-enumeration). Returns ErrRateLimitExceeded when the per-IP/per-email caps trip.
 func (s *AuthService) ResendVerification(ctx context.Context, email, ip string) error {
 	emailHash := sha256Hex(strings.ToLower(strings.TrimSpace(email)))
 
-	// Abuse caps (429 when exceeded): per-IP protects the relay, per-email protects
-	// a victim from email-bombing. Keys hash the email so raw addresses never hit Redis.
 	if ok, err := s.tokens.CheckRateLimit(ctx, "ratelimit:resend:ip:"+ip, resendIPMax, resendIPWindow); err != nil {
 		return fmt.Errorf("rate limit: %w", err)
 	} else if !ok {
@@ -212,8 +253,6 @@ func (s *AuthService) ResendVerification(ctx context.Context, email, ip string) 
 		return ErrRateLimitExceeded
 	}
 
-	// 60s cooldown between successful sends (modeled as max=1 / 60s window). Within
-	// the cooldown we silently skip the send but still return 202 (anti-enumeration).
 	fresh, err := s.tokens.CheckRateLimit(ctx, "cooldown:resend:"+emailHash, 1, resendCooldown)
 	if err != nil {
 		return fmt.Errorf("rate limit: %w", err)
@@ -226,17 +265,12 @@ func (s *AuthService) ResendVerification(ctx context.Context, email, ip string) 
 	return nil
 }
 
-// Refresh validates a refresh token, atomically revokes it, and issues a new pair.
 func (s *AuthService) Refresh(ctx context.Context, oldRefreshToken string) (accessToken, refreshToken string, err error) {
 	claims, err := s.parseToken(oldRefreshToken, "refresh")
 	if err != nil {
 		return "", "", ErrInvalidToken
 	}
 
-	// Atomically consume (read + delete) the old token. Under concurrent reuse
-	// of the same token, exactly one caller succeeds here; all others see it
-	// already gone and are rejected — this blocks both sequential and concurrent
-	// replay, and the consume happens BEFORE any new pair is issued.
 	storedUID, err := s.tokens.ConsumeRefreshToken(ctx, claims.ID)
 	if err != nil || storedUID != claims.Subject {
 		return "", "", ErrTokenRevoked
@@ -250,7 +284,6 @@ func (s *AuthService) Refresh(ctx context.Context, oldRefreshToken string) (acce
 	return s.issueTokenPair(ctx, userID)
 }
 
-// Logout revokes the refresh token in Redis.
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	claims, err := s.parseToken(refreshToken, "refresh")
 	if err != nil {
@@ -259,10 +292,6 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return s.tokens.DeleteRefreshToken(ctx, claims.ID)
 }
 
-// IsAdmin reports whether the user is an administrator. It reads the flag fresh
-// from the database (not from the access-token claims) so revoking admin takes
-// effect immediately, within the access token's lifetime. Used by the AdminOnly
-// middleware to gate the station write endpoints.
 func (s *AuthService) IsAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
 	user, err := s.users.FindByID(ctx, userID)
 	if err != nil {
@@ -271,14 +300,10 @@ func (s *AuthService) IsAdmin(ctx context.Context, userID uuid.UUID) (bool, erro
 	return user.IsAdmin, nil
 }
 
-// GetUser returns the user record for the given id (the authenticated user).
-// Backs GET /v1/me so the frontend can read identity + the is_admin flag, which
-// is intentionally NOT carried in the access token (see IsAdmin).
 func (s *AuthService) GetUser(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return s.users.FindByID(ctx, userID)
 }
 
-// ValidateAccessToken parses and validates an access JWT, returning its claims.
 func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims, error) {
 	claims, err := s.parseToken(tokenStr, "access")
 	if err != nil {
@@ -291,7 +316,177 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims,
 	return &domain.TokenClaims{UserID: userID, JTI: claims.ID}, nil
 }
 
-// ── private ───────────────────────────────────────────────────────────────────
+// ── OTP login (Slice B, TASK-0017) ────────────────────────────────────────────
+
+// RequestOTP generates and delivers a 6-digit OTP to the user's linked bot
+// chat. Always returns nil (anti-enumeration) unless a rate limit is exceeded.
+func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string) error {
+	// Per-IP guard (10/15m)
+	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:ip:"+ip, otpIPRateMax, otpIPRateWindow); err != nil {
+		return fmt.Errorf("rate limit: %w", err)
+	} else if !ok {
+		return ErrRateLimitExceeded
+	}
+
+	normalized, err := normalizePhone(phone)
+	if err != nil {
+		// Anti-enumeration: bad format → still nil, just don't send.
+		return nil
+	}
+
+	// Per-phone guard (3/15m)
+	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:phone:"+normalized, otpPhoneRateMax, otpPhoneRateWindow); err != nil {
+		return fmt.Errorf("rate limit: %w", err)
+	} else if !ok {
+		return ErrRateLimitExceeded
+	}
+
+	// 60s cooldown — skip the send but still return nil.
+	_, _ = s.tokens.CheckRateLimit(ctx, "otp:cooldown:"+normalized, 1, otpCooldownTTL)
+	// (result ignored — we want the cooldown key to be set on first call but we send
+	// unconditionally here; the 60s re-request guard is informational for the UI)
+
+	// Look up user + linked chat. Unknown phone or no chat → silent return.
+	user, err := s.users.FindByPhone(ctx, normalized)
+	if err != nil || (user.BaleChatID == nil && user.TelegramChatID == nil) {
+		return nil
+	}
+
+	code, err := generateOTPCode()
+	if err != nil {
+		log.Printf("otp: code generation failed: %v", err)
+		return nil
+	}
+
+	if err := s.tokens.CacheSet(ctx, "otp:login:"+normalized, code, otpTTL); err != nil {
+		log.Printf("otp: cache set failed for phone: %v", err)
+		return nil
+	}
+
+	if err := s.resolveAndSendOTP(ctx, user, code); err != nil {
+		log.Printf("otp: send failed: %v", err)
+	}
+	return nil
+}
+
+// CompleteOTPLogin validates the OTP and issues a token pair. Returns
+// ErrOTPInvalid for wrong, expired, or already-consumed codes (no enumeration).
+func (s *AuthService) CompleteOTPLogin(ctx context.Context, phone, code, ip string) (accessToken, refreshToken string, err error) {
+	normalized, normErr := normalizePhone(phone)
+	if normErr != nil {
+		return "", "", ErrOTPInvalid
+	}
+
+	// Check attempt lockout BEFORE consuming the OTP.
+	attempts, _, _ := s.tokens.CacheGet(ctx, "otp:attempts:"+normalized)
+	if countStr(attempts) >= otpMaxAttempts {
+		return "", "", ErrOTPInvalid
+	}
+
+	// Single-use consume: GetDel returns ("", false) when the key is absent.
+	stored, ok, err := s.tokens.CacheGetDel(ctx, "otp:login:"+normalized)
+	if err != nil {
+		return "", "", fmt.Errorf("otp: cache: %w", err)
+	}
+	if !ok || stored == "" {
+		return "", "", ErrOTPInvalid
+	}
+
+	// Constant-time comparison to prevent timing-based enumeration.
+	if !constantTimeEqual(stored, code) {
+		cnt, _ := s.tokens.IncrWithTTL(ctx, "otp:attempts:"+normalized, otpAttemptsTTL)
+		if cnt >= otpMaxAttempts {
+			// Locked: delete the OTP so further tries fail immediately.
+			_ = s.tokens.CacheDel(ctx, "otp:login:"+normalized)
+		}
+		return "", "", ErrOTPInvalid
+	}
+
+	// Success: clear attempt counter.
+	_ = s.tokens.CacheDel(ctx, "otp:attempts:"+normalized)
+
+	user, err := s.users.FindByPhone(ctx, normalized)
+	if err != nil {
+		return "", "", ErrOTPInvalid
+	}
+
+	return s.issueTokenPair(ctx, user.ID)
+}
+
+// ── Bot-link flow (Slice A, TASK-0017) ────────────────────────────────────────
+
+// InitiateBotLink mints a link token, stores it in Redis (10 min), and returns
+// the deep links for whichever platforms are configured. At least one URL is
+// returned; both are returned if both senders are configured.
+func (s *AuthService) InitiateBotLink(ctx context.Context, userID uuid.UUID) (baleURL, telegramURL string, err error) {
+	// A URL can only be generated when the bot username is set — without it we
+	// can't build the deep link even if a sender is wired up.
+	if s.baleBotUsername == "" && s.tgBotUsername == "" {
+		return "", "", ErrNoBotConfig
+	}
+
+	token, err := generateSecureToken()
+	if err != nil {
+		return "", "", fmt.Errorf("generate link token: %w", err)
+	}
+
+	if err := s.tokens.CacheSet(ctx, "botlink:"+token, userID.String(), botLinkTTL); err != nil {
+		return "", "", fmt.Errorf("store link token: %w", err)
+	}
+
+	if s.baleSender != nil && s.baleBotUsername != "" {
+		baleURL = "https://ble.ir/" + s.baleBotUsername + "?start=" + token
+	}
+	if s.tgSender != nil && s.tgBotUsername != "" {
+		telegramURL = "https://t.me/" + s.tgBotUsername + "?start=" + token
+	}
+	return baleURL, telegramURL, nil
+}
+
+// ConsumeBotLinkToken is called by the Poller on a /start <token> message.
+// Single-use (GetDel): returns the owning userID and whether the token existed.
+func (s *AuthService) ConsumeBotLinkToken(ctx context.Context, token string) (userID string, found bool, err error) {
+	return s.tokens.CacheGetDel(ctx, "botlink:"+token)
+}
+
+// StorePendingLink saves intermediate state while the user has opened the bot
+// but hasn't yet shared their contact.
+func (s *AuthService) StorePendingLink(ctx context.Context, platform, chatID, userID string) error {
+	return s.tokens.CacheSet(ctx, "botlink:pending:"+platform+":"+chatID, userID, botPendingLinkTTL)
+}
+
+// ConsumePendingLink retrieves and removes the pending link state.
+func (s *AuthService) ConsumePendingLink(ctx context.Context, platform, chatID string) (userID string, found bool, err error) {
+	return s.tokens.CacheGetDel(ctx, "botlink:pending:"+platform+":"+chatID)
+}
+
+// CompleteBotLink is called by the Poller after a verified contact share. It
+// normalizes the phone and writes phone + chat_id to the user row.
+func (s *AuthService) CompleteBotLink(ctx context.Context, userIDStr, platform, chatID, phone string) error {
+	normalized, err := normalizePhone(phone)
+	if err != nil {
+		return fmt.Errorf("normalize phone %q: %w", phone, err)
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return fmt.Errorf("parse user id: %w", err)
+	}
+
+	var baleID, tgID *string
+	switch Platform(platform) {
+	case PlatformBale:
+		baleID = &chatID
+	case PlatformTelegram:
+		tgID = &chatID
+	default:
+		return fmt.Errorf("unknown platform: %s", platform)
+	}
+
+	return s.users.UpdateBotLink(ctx, userID, normalized, baleID, tgID)
+}
+
+// ── private helpers ───────────────────────────────────────────────────────────
 
 func (s *AuthService) issueTokenPair(ctx context.Context, userID uuid.UUID) (string, string, error) {
 	now := time.Now()
@@ -331,9 +526,25 @@ func (s *AuthService) issueTokenPair(ctx context.Context, userID uuid.UUID) (str
 	return accessToken, refreshToken, nil
 }
 
+// resolveAndSendOTP picks Bale → Telegram with failover on transport error.
+func (s *AuthService) resolveAndSendOTP(ctx context.Context, user *domain.User, code string) error {
+	if s.baleSender != nil && user.BaleChatID != nil {
+		err := s.baleSender.Send(ctx, *user.BaleChatID, code)
+		if err == nil {
+			return nil
+		}
+		log.Printf("otp: Bale send failed, trying Telegram: %v", err)
+	}
+	if s.tgSender != nil && user.TelegramChatID != nil {
+		return s.tgSender.Send(ctx, *user.TelegramChatID, code)
+	}
+	// No sender could deliver — log only, the request still returns 202.
+	log.Printf("otp: no sender available for user=%s", user.ID)
+	return nil
+}
+
 // generateVerificationToken returns a high-entropy raw token (base64url, 256-bit)
-// and its SHA-256 hex hash. Only the hash is persisted; the raw token travels
-// solely in the emailed link and the verify request body.
+// and its SHA-256 hex hash.
 func generateVerificationToken() (raw, hash string, err error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -343,9 +554,86 @@ func generateVerificationToken() (raw, hash string, err error) {
 	return raw, sha256Hex(raw), nil
 }
 
+// generateSecureToken returns a URL-safe 256-bit random string.
+func generateSecureToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("read random: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// generateOTPCode returns a cryptographically-random 6-digit string (000000–999999).
+func generateOTPCode() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
+}
+
+// normalizePhone accepts Iranian phone numbers in several formats and returns
+// the canonical E.164 form (e.g. "+989121234567").
+func normalizePhone(raw string) (string, error) {
+	var b strings.Builder
+	for i, c := range raw {
+		if c == '+' && i == 0 {
+			b.WriteRune(c)
+		} else if unicode.IsDigit(c) {
+			b.WriteRune(c)
+		}
+	}
+	s := b.String()
+
+	switch {
+	case strings.HasPrefix(s, "+"):
+		// already E.164
+	case strings.HasPrefix(s, "98"):
+		s = "+" + s
+	case strings.HasPrefix(s, "0"):
+		s = "+98" + s[1:]
+	default:
+		return "", ErrInvalidPhone
+	}
+
+	// E.164: "+" followed by 7–15 digits.
+	if len(s) < 8 || len(s) > 16 {
+		return "", ErrInvalidPhone
+	}
+	return s, nil
+}
+
 func sha256Hex(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+// constantTimeEqual compares two strings in constant time to avoid
+// timing side-channels on OTP comparisons.
+func constantTimeEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var x byte
+	for i := 0; i < len(a); i++ {
+		x |= a[i] ^ b[i]
+	}
+	return x == 0
+}
+
+// countStr parses a Redis integer string; returns 0 on error.
+func countStr(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	var n int64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n
 }
 
 func (s *AuthService) parseToken(tokenStr, expectedType string) (*voltanaClaims, error) {

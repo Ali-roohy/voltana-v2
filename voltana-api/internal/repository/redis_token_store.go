@@ -63,6 +63,29 @@ func (s *RedisTokenStore) CacheDel(ctx context.Context, key string) error {
 	return s.rdb.Del(ctx, key).Err()
 }
 
+// CacheGetDel atomically fetches and deletes a cache key in a single round-trip
+// (GETDEL). Returns ("", false, nil) on a miss (redis.Nil is not an error).
+func (s *RedisTokenStore) CacheGetDel(ctx context.Context, key string) (string, bool, error) {
+	val, err := s.rdb.GetDel(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return val, true, nil
+}
+
+// IncrWithTTL atomically increments a counter and sets the TTL on the first
+// increment (same Lua atomicity as CheckRateLimit). Returns the new count.
+func (s *RedisTokenStore) IncrWithTTL(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	count, err := rateLimitScript.Run(ctx, s.rdb, []string{key}, int64(ttl.Seconds())).Int64()
+	if err != nil {
+		return 0, fmt.Errorf("incr: %w", err)
+	}
+	return count, nil
+}
+
 // rateLimitScript performs INCR and the first-attempt EXPIRE as one atomic
 // operation, so a crash/disconnect can never leave a counter without a TTL
 // (which would otherwise lock an IP out permanently). Returns the new count.

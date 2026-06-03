@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Zap } from "lucide-react";
+import { ArrowLeft, Zap, Link2, CheckCircle2 } from "lucide-react";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
+import { useMe } from "@/features/auth/hooks";
+import { useBotLink } from "@/features/account/hooks";
 import { toast } from "sonner";
 
 export default function Settings() {
@@ -28,6 +30,9 @@ export default function Settings() {
 
   // Fetch user settings (GET auto-creates a default row server-side)
   const { data: settings, isLoading } = useSettings();
+  const { data: me } = useMe(!!user);
+  const botLinkMutation = useBotLink();
+  const [botLinks, setBotLinks] = useState<{ bale_url?: string; telegram_url?: string } | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -161,6 +166,77 @@ export default function Settings() {
               >
                 {saveMutation.isPending ? (isRTL ? 'در حال ذخیره...' : 'Saving...') : texts.save}
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Bot link card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Link2 className="w-5 h-5" />
+                اتصال بله / تلگرام
+              </CardTitle>
+              <CardDescription>
+                حساب خود را به بله یا تلگرام متصل کنید تا بتوانید با کد پیامکی وارد شوید.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {me?.bale_linked && (
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                  بله متصل است
+                  {me.phone && <span className="font-mono text-xs text-muted-foreground" dir="ltr">({me.phone})</span>}
+                </div>
+              )}
+              {me?.telegram_linked && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                  تلگرام متصل است
+                </div>
+              )}
+              {botLinks ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    روی لینک زیر کلیک کنید تا ربات باز شود. شماره تلفن را به اشتراک بگذارید تا اتصال کامل شود.
+                  </p>
+                  {botLinks.bale_url && (
+                    <Button asChild variant="outline" className="w-full" size="sm">
+                      <a href={botLinks.bale_url} target="_blank" rel="noopener noreferrer">
+                        🟣 اتصال از طریق بله
+                      </a>
+                    </Button>
+                  )}
+                  {botLinks.telegram_url && (
+                    <Button asChild variant="outline" className="w-full" size="sm">
+                      <a href={botLinks.telegram_url} target="_blank" rel="noopener noreferrer">
+                        🔵 اتصال از طریق تلگرام
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => setBotLinks(null)}
+                  >
+                    بستن
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  disabled={botLinkMutation.isPending}
+                  onClick={() =>
+                    botLinkMutation.mutate(undefined, {
+                      onSuccess: (data) => setBotLinks(data),
+                      onError: () => toast.error('خطا در دریافت لینک اتصال'),
+                    })
+                  }
+                >
+                  {botLinkMutation.isPending ? 'در حال دریافت لینک...' : 'دریافت لینک اتصال'}
+                </Button>
+              )}
             </CardContent>
           </Card>
 

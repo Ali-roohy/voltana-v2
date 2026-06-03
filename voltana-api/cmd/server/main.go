@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"voltana-api/internal/bot"
 	"voltana-api/internal/handler"
 	"voltana-api/internal/mailer"
 	"voltana-api/internal/middleware"
@@ -59,8 +60,7 @@ func main() {
 	batteryRepo  := repository.NewBatteryRepository(db)
 	stationRepo  := repository.NewStationRepository(db)
 
-	// Mailer: real SMTP when SMTP_HOST is set, otherwise a dev log mailer that
-	// never prints the verification link/token.
+	// ── Mailer ────────────────────────────────────────────────────────────────
 	var mail service.Mailer
 	if host := os.Getenv("SMTP_HOST"); host != "" {
 		mail = mailer.NewSMTP(host, getenv("SMTP_PORT", "587"), os.Getenv("SMTP_USER"),
@@ -71,7 +71,48 @@ func main() {
 		log.Println("mailer: SMTP not configured — using dev log mailer")
 	}
 
-	authSvc     := service.NewAuthService(userRepo, verifRepo, tokenStore, mail, os.Getenv("APP_URL"), mustEnv("JWT_SECRET"))
+	// ── Auth service ──────────────────────────────────────────────────────────
+	authSvc := service.NewAuthService(userRepo, verifRepo, tokenStore, mail, os.Getenv("APP_URL"), mustEnv("JWT_SECRET"))
+
+	// ── Bot OTP senders (TASK-0017) ───────────────────────────────────────────
+	// Senders are wired only when the corresponding bot token is present.
+	// With no tokens configured, LogOTPSender is used so QA can test the OTP
+	// path without a real bot (code appears in the server log).
+	baleToken   := os.Getenv("BALE_BOT_TOKEN")
+	tgToken     := os.Getenv("TELEGRAM_BOT_TOKEN")
+	baleUser    := os.Getenv("BALE_BOT_USERNAME")
+	tgUser      := os.Getenv("TELEGRAM_BOT_USERNAME")
+
+	var baleSender, tgSender service.OTPSender
+	switch {
+	case baleToken != "":
+		baleSender = bot.NewBaleSender(baleToken)
+		log.Println("bot: Bale sender configured")
+	default:
+		baleSender = bot.LogOTPSender{}
+		log.Println("bot: BALE_BOT_TOKEN not set — using LogOTPSender")
+	}
+	if tgToken != "" {
+		tgSender = bot.NewTelegramSender(tgToken)
+		log.Println("bot: Telegram sender configured")
+	}
+
+	authSvc.SetBotSenders(baleSender, tgSender, baleUser, tgUser)
+
+	// ── Long-poll workers ─────────────────────────────────────────────────────
+	// One poller per configured real bot token. Pollers run in-process goroutines
+	// (outbound-only HTTPS — no public webhook needed, safe behind NAT / WSL2).
+	ctx := context.Background()
+	if baleToken != "" {
+		poller := bot.NewPoller("https://api.bale.ai/bot"+baleToken, "bale", authSvc)
+		go poller.Run(ctx)
+	}
+	if tgToken != "" {
+		poller := bot.NewPoller("https://api.telegram.org/bot"+tgToken, "telegram", authSvc)
+		go poller.Run(ctx)
+	}
+
+	// ── Other services ────────────────────────────────────────────────────────
 	carSvc      := service.NewCarService(carRepo)
 	evModelSvc  := service.NewEVModelService(evModelRepo)
 	chargingSvc := service.NewChargingService(chargingRepo, carRepo, settingsRepo)
@@ -79,10 +120,10 @@ func main() {
 	analyticsSvc := service.NewAnalyticsService(carRepo, evModelRepo, chargingRepo, batteryRepo, tokenStore)
 	stationSvc  := service.NewStationService(stationRepo)
 
-	// Recompute battery SOH off the request path whenever charging history changes.
 	chargingSvc.SetHealthRecomputer(analyticsSvc)
 
 	authH      := handler.NewAuthHandler(authSvc, isProd)
+	accountH   := handler.NewAccountHandler(authSvc)
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
 	chargingH  := handler.NewChargingHandler(chargingSvc)
@@ -93,16 +134,9 @@ func main() {
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := gin.New()
 
-	// Trust only the Docker bridge network (where nginx sits). Without this Gin
-	// trusts all proxies and would return the client-controlled left-most
-	// X-Forwarded-For entry — letting an attacker rotate the header to bypass
-	// the per-IP login rate limit.
 	if err := r.SetTrustedProxies([]string{"172.16.0.0/12"}); err != nil {
 		log.Fatalf("set trusted proxies: %v", err)
 	}
-	// Derive the client IP from X-Real-IP, which nginx sets from $remote_addr and
-	// overwrites on every request — clients cannot forge it. X-Forwarded-For is
-	// client-appendable, so it must not back the rate-limit key.
 	r.RemoteIPHeaders = []string{"X-Real-IP"}
 
 	r.Use(gin.Logger(), gin.Recovery())
@@ -117,12 +151,15 @@ func main() {
 		auth.POST("/logout",              authH.Logout)
 		auth.POST("/verify-email",        authH.VerifyEmail)
 		auth.POST("/resend-verification", authH.ResendVerification)
+		auth.POST("/otp/request",         authH.OTPRequest)
+		auth.POST("/otp/verify",          authH.OTPVerify)
 	}
 
-	// /v1 — all routes require a valid Bearer access token (Auth middleware).
 	v1 := r.Group("/v1", middleware.Auth(authSvc))
 	{
 		v1.GET("/me", authH.Me)
+
+		v1.POST("/account/bot-link", accountH.BotLink)
 
 		v1.GET("/cars", carH.List)
 		v1.POST("/cars", carH.Create)
@@ -147,7 +184,6 @@ func main() {
 		v1.GET("/analytics/battery/:car_id/history", analyticsH.BatteryHistory)
 		v1.GET("/analytics/recommendations/:car_id", analyticsH.Recommendations)
 
-		// Charging stations: reads open to any authed user; writes admin-only.
 		v1.GET("/stations", stationH.List)
 		v1.GET("/stations/:id", stationH.Get)
 		v1.POST("/stations", middleware.AdminOnly(authSvc), stationH.Create)

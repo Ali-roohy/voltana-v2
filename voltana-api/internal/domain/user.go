@@ -12,6 +12,9 @@ type User struct {
 	PasswordHash    string
 	IsEmailVerified bool
 	IsAdmin         bool
+	Phone           *string // E.164, nil until bot is linked
+	BaleChatID      *string // nil until linked via Bale
+	TelegramChatID  *string // nil until linked via Telegram
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
