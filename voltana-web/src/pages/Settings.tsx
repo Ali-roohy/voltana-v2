@@ -28,6 +28,7 @@ export default function Settings() {
   const [ratePeak, setRatePeak] = useState<string>('5000');
   const [rateMid, setRateMid] = useState<string>('3000');
   const [rateOffpeak, setRateOffpeak] = useState<string>('1500');
+  const [currency, setCurrency] = useState<'toman' | 'rial' | 'usd'>('toman');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,6 +47,7 @@ export default function Settings() {
       setRatePeak(settings.peak_rate?.toString() || '5000');
       setRateMid(settings.mid_rate?.toString() || '3000');
       setRateOffpeak(settings.offpeak_rate?.toString() || '1500');
+      setCurrency(settings.currency ?? 'toman');
     }
   }, [settings]);
 
@@ -59,6 +61,7 @@ export default function Settings() {
         peak_rate: parseFloat(ratePeak) || 5000,
         mid_rate: parseFloat(rateMid) || 3000,
         offpeak_rate: parseFloat(rateOffpeak) || 1500,
+        currency,
       },
       {
         onSuccess: () => toast.success(isRTL ? 'تنظیمات با موفقیت ذخیره شد' : 'Settings saved successfully'),
@@ -173,6 +176,41 @@ export default function Settings() {
               >
                 {saveMutation.isPending ? (isRTL ? 'در حال ذخیره...' : 'Saving...') : texts.save}
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Currency selector card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{isRTL ? 'واحد ارزی' : 'Currency'}</CardTitle>
+              <CardDescription>
+                {isRTL
+                  ? 'واحد نمایش مبالغ را انتخاب کنید (ذخیره در حساب)'
+                  : 'Currency unit for cost display (saved to account)'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2">
+                {(['toman', 'rial', 'usd'] as const).map((c) => (
+                  <Button
+                    key={c}
+                    variant={currency === c ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => {
+                      setCurrency(c);
+                      saveMutation.mutate({
+                        default_car_id: settings?.default_car_id ?? null,
+                        peak_rate: parseFloat(ratePeak) || 5000,
+                        mid_rate: parseFloat(rateMid) || 3000,
+                        offpeak_rate: parseFloat(rateOffpeak) || 1500,
+                        currency: c,
+                      });
+                    }}
+                  >
+                    {c === 'toman' ? 'تومان' : c === 'rial' ? 'ریال' : 'USD'}
+                  </Button>
+                ))}
+              </div>
             </CardContent>
           </Card>
 

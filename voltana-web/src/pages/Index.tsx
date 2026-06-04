@@ -11,7 +11,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { Header } from "@/components/Header";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { formatNumber } from "@/lib/utils";
-import { calcCost, ratesFromSettings } from "@/lib/cost";
+import { calcCost, ratesFromSettings, formatCost } from "@/lib/cost";
 import { useChargingSessions } from "@/features/charging/hooks";
 import type { ChargingSession } from "@/features/charging/api";
 import { useCars } from "@/features/cars/hooks";
@@ -35,6 +35,7 @@ export default function Index() {
   }, [user, loading, navigate]);
 
   const { data: settings } = useSettings();
+  const currency = settings?.currency ?? 'toman';
   const { data: cars = [] } = useCars();
   const { data: sessions = [] } = useChargingSessions();
 
@@ -188,7 +189,7 @@ export default function Index() {
           <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-soft border border-border/50 hover:shadow-lg transition-shadow">
             <div className="text-xs sm:text-sm text-muted-foreground mb-1 sm:mb-2">{t('dashboard.totalCost')}</div>
             <div className="text-2xl sm:text-3xl font-bold">
-              {formatNumber(stats.totalCost)} {language === 'fa' ? 'تومان' : 'Toman'}
+              {formatCost(Number(stats.totalCost), currency)}
             </div>
           </div>
           <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-soft border border-border/50 hover:shadow-lg transition-shadow">
@@ -196,7 +197,7 @@ export default function Index() {
             <div className="text-2xl sm:text-3xl font-bold text-accent">
               {stats.avgCost == null
                 ? '—'
-                : `${formatNumber(Math.round(stats.avgCost))} ${language === 'fa' ? 'تومان' : 'Toman'}`}
+                : formatCost(Math.round(stats.avgCost), currency)}
             </div>
           </div>
           <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-soft border border-border/50 hover:shadow-lg transition-shadow">
@@ -283,14 +284,14 @@ export default function Index() {
                   <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => formatNumber(v)} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', padding: '12px' }}
-                    formatter={(value: number | string) => `${formatNumber(String(value))} ${language === 'fa' ? 'تومان' : 'Toman'}`}
+                    formatter={(value: number | string) => formatCost(Number(value), currency)}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
                   <Bar
                     dataKey="cost"
                     fill="url(#colorCost)"
                     radius={[8, 8, 0, 0]}
-                    name={language === 'fa' ? 'هزینه (تومان)' : 'Cost (Toman)'}
+                    name={language === 'fa' ? `هزینه (${currency === 'usd' ? 'USD' : currency === 'rial' ? 'ریال' : 'تومان'})` : `Cost (${currency.toUpperCase()})`}
                     animationDuration={1000}
                   />
                 </BarChart>

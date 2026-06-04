@@ -5,6 +5,7 @@ export interface Settings {
   peak_rate: number;
   mid_rate: number;
   offpeak_rate: number;
+  currency: 'toman' | 'rial' | 'usd';
   created_at: string;
   updated_at: string;
 }
@@ -15,6 +16,7 @@ export interface SettingsUpdate {
   peak_rate: number;
   mid_rate: number;
   offpeak_rate: number;
+  currency: 'toman' | 'rial' | 'usd';
 }
 
 export const getSettings = () => api.get<Settings>("/v1/settings");

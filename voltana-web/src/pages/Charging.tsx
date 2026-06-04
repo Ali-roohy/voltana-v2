@@ -37,7 +37,7 @@ import { format as formatJalali } from "date-fns-jalali";
 import { JalaliDatePicker } from "@/components/JalaliDatePicker";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { cn } from "@/lib/utils";
-import { calcCost, ratesFromSettings } from "@/lib/cost";
+import { calcCost, ratesFromSettings, formatCost } from "@/lib/cost";
 import { SOCAnalysis } from "@/components/SOCAnalysis";
 import { Header } from "@/components/Header";
 import { useChargingSessions, useCreateSession, useUpdateSession, useDeleteSession } from "@/features/charging/hooks";
@@ -316,7 +316,7 @@ const Charging = () => {
     return `${hours}:${mins.toString().padStart(2, "0")}`;
   };
 
-  const formatCost = (cost: number) => new Intl.NumberFormat("fa-IR").format(cost);
+  const currency = settings?.currency ?? 'toman';
   const carName = (carId: string) => carById.get(carId)?.name ?? "—";
 
   return (
@@ -474,7 +474,7 @@ const Charging = () => {
                         <Zap className="h-3.5 w-3.5" />
                         {totalKwh(session).toFixed(2)} kWh
                       </span>
-                      <span>{formatCost(getSessionCost(session))} تومان</span>
+                      <span>{formatCost(getSessionCost(session), currency)}</span>
                       {session.efficiency_kwh_per_100km != null && (
                         <span className="font-medium text-foreground">
                           {session.efficiency_kwh_per_100km.toFixed(1)} kWh/100km
@@ -527,7 +527,7 @@ const Charging = () => {
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 flex-1">
-                            <span>{formatCost(getSessionCost(session))} تومان</span>
+                            <span>{formatCost(getSessionCost(session), currency)}</span>
                             <button
                               onClick={() => {
                                 setEditingCost(session.id);

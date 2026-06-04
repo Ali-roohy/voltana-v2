@@ -28,10 +28,16 @@ type settingsRequest struct {
 	PeakRate     float64 `json:"peak_rate"      binding:"gte=0"`
 	MidRate      float64 `json:"mid_rate"       binding:"gte=0"`
 	OffpeakRate  float64 `json:"offpeak_rate"   binding:"gte=0"`
+	Currency     string  `json:"currency"       binding:"omitempty,oneof=toman rial usd"`
 }
 
 func (req settingsRequest) toInput() domain.SettingsInput {
-	in := domain.SettingsInput{PeakRate: req.PeakRate, MidRate: req.MidRate, OffpeakRate: req.OffpeakRate}
+	in := domain.SettingsInput{
+		PeakRate:    req.PeakRate,
+		MidRate:     req.MidRate,
+		OffpeakRate: req.OffpeakRate,
+		Currency:    req.Currency,
+	}
 	if req.DefaultCarID != nil {
 		id := uuid.MustParse(*req.DefaultCarID) // validated as a UUID by binding
 		in.DefaultCarID = &id

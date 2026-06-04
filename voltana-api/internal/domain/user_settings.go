@@ -15,6 +15,7 @@ type UserSettings struct {
 	PeakRate     float64    `json:"peak_rate"`
 	MidRate      float64    `json:"mid_rate"`
 	OffpeakRate  float64    `json:"offpeak_rate"`
+	Currency     string     `json:"currency"` // "toman" | "rial" | "usd"
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
@@ -26,4 +27,5 @@ type SettingsInput struct {
 	PeakRate     float64
 	MidRate      float64
 	OffpeakRate  float64
+	Currency     string // "toman" | "rial" | "usd"; defaults to "toman" when empty
 }

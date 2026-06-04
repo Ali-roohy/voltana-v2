@@ -1,6 +1,27 @@
 import type { ChargingSession } from "@/features/charging/api";
 import type { Settings } from "@/features/settings/api";
 
+export type Currency = 'toman' | 'rial' | 'usd';
+
+// Static fallback rate — 1 USD ≈ 500,000 Toman (update when a live feed is wired).
+const USD_RATE = 500_000;
+
+/**
+ * Format a Toman amount into the user's chosen currency string, including unit.
+ * Conversion is display-only; stored amounts are always in Toman.
+ */
+export function formatCost(amount: number, currency: Currency = 'toman'): string {
+  const n = (v: number) => new Intl.NumberFormat('fa-IR').format(Math.round(v));
+  switch (currency) {
+    case 'rial':
+      return `${n(amount * 10)} ریال`;
+    case 'usd':
+      return `$${(amount / USD_RATE).toFixed(2)}`;
+    default:
+      return `${n(amount)} تومان`;
+  }
+}
+
 // Per-period electricity rates (Toman per kWh). Single source of truth for the
 // time-of-use cost math used by the charging page and the dashboard.
 export interface Rates {
