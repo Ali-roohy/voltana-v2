@@ -20,9 +20,10 @@ import { AdminRoute } from "./components/AdminRoute";
 import { BottomNav } from "./components/BottomNav";
 
 // Leaflet pages are lazy-loaded so the Leaflet bundle never enters the main chunk.
-// This is the only reliable way to prevent Rollup from renaming Leaflet's class
-// constructors during minification ("vP is not a constructor" in production).
-const Map = lazy(() => import("./pages/Map"));
+// Named MapPage (not Map) to avoid shadowing the native JS Map global — Rollup
+// renames the native Map to an alias when a module-level variable called "Map"
+// is in scope, which breaks every `new Map()` call elsewhere in the bundle.
+const MapPage = lazy(() => import("./pages/Map"));
 const AdminStations = lazy(() => import("./pages/AdminStations"));
 
 const MapFallback = () => (
@@ -71,7 +72,7 @@ const SwipeableRoutes = () => {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/cars" element={<Cars />} />
           <Route path="/charging" element={<Charging />} />
-          <Route path="/map" element={<Suspense fallback={<MapFallback />}><Map /></Suspense>} />
+          <Route path="/map" element={<Suspense fallback={<MapFallback />}><MapPage /></Suspense>} />
           <Route path="/settings" element={<Settings />} />
           <Route
             path="/admin/stations"

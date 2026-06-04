@@ -14,7 +14,7 @@ const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const Map = () => {
+const MapPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data: stations, isLoading, isError } = useStations();
   const { data: selected } = useStation(selectedId);
@@ -182,4 +182,4 @@ const Map = () => {
   );
 };
 
-export default Map;
+export default MapPage;

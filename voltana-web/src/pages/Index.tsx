@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
-import { Zap, Car, Bolt, Map, BatteryCharging } from "lucide-react";
+import { Zap, Car, Bolt, Map as MapIcon, BatteryCharging } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Header } from "@/components/Header";
@@ -193,7 +193,7 @@ export default function Index() {
           </Button>
 
           <Button variant="outline" className="h-auto py-6 sm:py-8 flex flex-col items-center gap-2 sm:gap-3 hover:border-primary hover:shadow-soft transition-all" onClick={() => navigate('/map')}>
-            <Map className="w-6 h-6 sm:w-8 sm:h-8 text-primary-glow" />
+            <MapIcon className="w-6 h-6 sm:w-8 sm:h-8 text-primary-glow" />
             <div className="text-center">
               <div className="font-semibold text-sm sm:text-base">{t('nav.map')}</div>
               <div className="text-xs text-muted-foreground">نقشه ایستگاه‌ها</div>
