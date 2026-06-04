@@ -11,7 +11,9 @@ import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
 import { useMe } from "@/features/auth/hooks";
 import { useBotLink } from "@/features/account/hooks";
 import { useAppTheme } from "@/contexts/ThemeContext";
+import { useAppFont } from "@/contexts/FontContext";
 import { THEMES } from "@/lib/themes";
+import { FONTS } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -21,6 +23,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const isRTL = language === 'fa';
   const { themeId, setTheme } = useAppTheme();
+  const { fontId, setFont } = useAppFont();
 
   const [ratePeak, setRatePeak] = useState<string>('5000');
   const [rateMid, setRateMid] = useState<string>('3000');
@@ -290,6 +293,38 @@ export default function Settings() {
                   );
                 })}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Font selector card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{isRTL ? 'فونت' : 'Font'}</CardTitle>
+              <CardDescription>
+                {isRTL ? 'فونت نمایش متن را انتخاب کنید' : 'Choose the display typeface'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {FONTS.map((f) => {
+                const isActive = fontId === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setFont(f.id)}
+                    className={cn(
+                      'w-full flex items-center justify-between px-3 py-2.5 rounded-md border text-sm transition-all',
+                      isActive
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    <span style={{ fontFamily: f.stack }} className="text-base">
+                      {isRTL ? f.previewFa : f.previewEn}
+                    </span>
+                    <span className="text-xs">{isRTL ? f.nameFa : f.nameEn}</span>
+                  </button>
+                );
+              })}
             </CardContent>
           </Card>
 
