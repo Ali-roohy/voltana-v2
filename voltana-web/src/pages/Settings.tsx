@@ -6,10 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Zap, Link2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Zap, Link2, CheckCircle2, Palette } from "lucide-react";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
 import { useMe } from "@/features/auth/hooks";
 import { useBotLink } from "@/features/account/hooks";
+import { useAppTheme } from "@/contexts/ThemeContext";
+import { THEMES } from "@/lib/themes";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function Settings() {
@@ -17,6 +20,7 @@ export default function Settings() {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const isRTL = language === 'fa';
+  const { themeId, setTheme } = useAppTheme();
 
   const [ratePeak, setRatePeak] = useState<string>('5000');
   const [rateMid, setRateMid] = useState<string>('3000');
@@ -237,6 +241,55 @@ export default function Settings() {
                   {botLinkMutation.isPending ? 'در حال دریافت لینک...' : 'دریافت لینک اتصال'}
                 </Button>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Theme selector card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="w-5 h-5" />
+                {isRTL ? 'تم رنگی' : 'Color Theme'}
+              </CardTitle>
+              <CardDescription>
+                {isRTL ? 'رنگ‌بندی رابط کاربری را انتخاب کنید' : 'Choose the app color scheme'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-3">
+                {THEMES.map((t) => {
+                  const isActive = themeId === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      className="flex flex-col items-center gap-1.5 group"
+                      title={isRTL ? t.nameFa : t.nameEn}
+                    >
+                      {/* Color swatch circle */}
+                      <div
+                        className={cn(
+                          'w-10 h-10 rounded-full border-2 transition-all',
+                          isActive
+                            ? 'border-foreground scale-110 shadow-md'
+                            : 'border-transparent group-hover:border-muted-foreground group-hover:scale-105',
+                        )}
+                        style={{
+                          background: `linear-gradient(135deg, ${t.swatchPrimary}, ${t.swatchAccent})`,
+                        }}
+                      />
+                      <span
+                        className={cn(
+                          'text-[10px] text-center leading-tight transition-colors',
+                          isActive ? 'text-foreground font-medium' : 'text-muted-foreground',
+                        )}
+                      >
+                        {isRTL ? t.nameFa : t.nameEn}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
 
