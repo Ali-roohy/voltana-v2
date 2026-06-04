@@ -6,11 +6,13 @@
 
 ## Current State
 
-- **Date**: 2026-06-03
-- **Active Phase**: **Phase 3 — in progress** (Phases 1 & 2 complete)
-- **Current Sprint**: Phase 3 — infra hardening ✅ (0014) + map/stations ✅ (0013) + admin UI ✅ (0016) + odometer ✅ (0018) + **TASK-0017 (OTP Login via Bale/Telegram) ✅ CLOSED 2026-06-03** (migration 000010: phone/bale_chat_id/telegram_chat_id; `/auth/otp/request`+`/auth/otp/verify`; `POST /v1/account/bot-link`; in-process long-poll worker; OTPSender interface with Bale/Telegram/LogOTPSender; frontend: 3-tab login + Settings bot-link card).
+- **Date**: 2026-06-04
+- **Active Phase**: **Phase 3 — COMPLETE** (Phases 1, 2 & 3 complete)
+- **Current Sprint**: Phase 3 wrap-up — TASK-0025 (VPS deploy) ✅ · nginx static serving ✅ · Bale/TG bot fixes ✅ · dashboard post-commit hook ✅
 
 ## Last Completed Task
+- TASK-0025 — VPS Production Deployment (**DONE ✅ CLOSED with caveat** by qa_supervisor, 2026-06-04 — dev_supervisor ✅ + security ✅ + qa ✅ 12/12 code-verified). `scripts/bootstrap-vps.sh` (idempotent: Docker, Node 20, certbot, UFW 22/80/443, voltana user) · `scripts/deploy.sh` (git pull → npm build → envsubst nginx → migrate → rebuild api → nginx reload; `set -euo pipefail`) · `infra/nginx/nginx.prod.conf` (HTTP→HTTPS, TLS 1.2+1.3 Mozilla Intermediate, 6 security headers, `/auth/` rate-limit, SPA fallback) · `infra/systemd/voltana.service` (oneshot+RemainAfterExit, Restart=on-failure) · `docker-compose.prod.yml` (port 443, cert mounts, mailhog dev-profile gate) · `docs/DEPLOY.md` complete guide. **Bonus (same commit):** `nginx/nginx.conf` updated to serve `voltana-web/dist` as SPA (no more Vite preview needed); `docker-compose.yml` mounts the dist. Live smoke: `GET /` → SPA HTML ✓ · `/health` → `{"status":"ok"}` ✓ · `/v1/cars` → 401 ✓. ⚠️ Caveat: live VPS acceptance requires operator-provisioned domain + server.
+
 - TASK-0017 — OTP Login via Bale/Telegram Bot (**DONE / CLOSED with caveat** by qa_supervisor,
   2026-06-03 — dev_supervisor ✅ (6/6) + security ✅ + qa ✅ (13/13 live+code) + qa_supervisor ✅).
   Passwordless OTP login via Bale/Telegram alongside existing email/password auth. **Slice A (linking):**
@@ -161,6 +163,13 @@
 | TASK-0024 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Added "بستن"/X close button at bottom of expanded session detail in `Charging.tsx`. Chevron was already present. `tsc 0 · npm build ✓` |
 
 ## Current Focus
+- **🎉 Phase 3 — COMPLETE (2026-06-04). All 25 tasks DONE.**
+- **Next:** Phase 4 planning (researcher / pm pass). Likely candidates: OBD/ELM327 BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor mobile packaging.
+
+## Phase 3 Summary (2026-06-02 → 2026-06-04)
+Phase 3 delivered: TASK-0013 (map+stations) · 0014 (infra hardening) · 0015 (GitHub governance) · 0016 (admin UI) · 0017 (OTP/Bale bot) · 0018 (odometer) · 0019 (themes) · 0020 (fonts) · 0021 (currency) · 0022 (efficiency chart) · 0023 (total_km fix) · 0024 (session close button) · 0025 (VPS deployment). Also: bot poller exponential backoff + Telegram IPv4 fix + nginx static SPA serving + post-commit dashboard auto-sync hook.
+
+## Previously Current Focus (archived)
 - **➡️ Phase 3 active tasks (2026-06-03):**
   - **TASK-0023 ✅ DONE** — `total_km` now derived from session odometer deltas. Removed `ListByUser` loop in `GetDashboard`; uses `effKM` directly. Regression test added. Live smoke: 200→350 km tracking correctly; no-odometer sessions don't change it.
   - **TASK-0024 ✅ DONE** — Close button ("بستن" + X icon) added at bottom of expanded session detail. Chevron was already present.
