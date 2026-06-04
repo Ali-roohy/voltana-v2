@@ -1,24 +1,11 @@
 import { useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-// Leaflet's default marker icon URLs break under Vite's bundler — re-point them
-// at the bundled asset imports so markers render (standard react-leaflet fix).
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Zap, Building2, Loader2 } from "lucide-react";
 import { useStations, useStation } from "@/features/stations/hooks";
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
 
 // Tehran — same default view the previous iframe map centered on.
 const TEHRAN_CENTER: [number, number] = [35.7219, 51.3347];
