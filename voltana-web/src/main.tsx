@@ -1,4 +1,3 @@
-import "./lib/leaflet-setup"; // must be first: patches L.Icon.Default before any map component loads
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";

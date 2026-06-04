@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "@/lib/leaflet-setup";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 
 import { Header } from "@/components/Header";

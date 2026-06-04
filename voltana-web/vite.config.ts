@@ -31,20 +31,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   // Stop esbuild pre-bundling leaflet — its CJS/ESM mixed exports confuse the
-  // pre-bundler and produce a module that later breaks Rollup's concatenation.
+  // pre-bundler. In production, Leaflet is naturally isolated because Map.tsx
+  // and AdminStations.tsx are lazy-loaded (React.lazy), so Rollup puts them in
+  // separate async chunks where Leaflet's class names are never renamed.
   optimizeDeps: {
     exclude: ["leaflet"],
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        // Isolate leaflet + react-leaflet in their own chunk so Rollup never
-        // inlines them into the main bundle. Inlining causes class declarations
-        // to be renamed by the minifier, which breaks `new L.Map()` et al.
-        manualChunks: {
-          leaflet: ["leaflet", "react-leaflet"],
-        },
-      },
-    },
   },
 }));

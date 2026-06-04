@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import "@/lib/leaflet-setup";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 
 const TEHRAN_CENTER: [number, number] = [35.7219, 51.3347];

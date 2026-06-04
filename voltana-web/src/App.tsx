@@ -1,3 +1,4 @@
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -7,19 +8,34 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { FontProvider } from "./contexts/FontContext";
 import { motion } from "framer-motion";
-import { useEffect, useRef } from "react";
 import i18n from "./i18n/config";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import VerifyEmail from "./pages/VerifyEmail";
 import Cars from "./pages/Cars";
 import Charging from "./pages/Charging";
-import Map from "./pages/Map";
 import Settings from "./pages/Settings";
-import AdminStations from "./pages/AdminStations";
 import NotFound from "./pages/NotFound";
 import { AdminRoute } from "./components/AdminRoute";
 import { BottomNav } from "./components/BottomNav";
+
+// Leaflet pages are lazy-loaded so the Leaflet bundle never enters the main chunk.
+// This is the only reliable way to prevent Rollup from renaming Leaflet's class
+// constructors during minification ("vP is not a constructor" in production).
+const Map = lazy(() => import("./pages/Map"));
+const AdminStations = lazy(() => import("./pages/AdminStations"));
+
+const MapFallback = () => (
+  <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground text-sm">
+    در حال بارگذاری نقشه…
+  </div>
+);
+
+const AdminFallback = () => (
+  <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground text-sm">
+    در حال بارگذاری…
+  </div>
+);
 
 const queryClient = new QueryClient();
 
@@ -55,13 +71,15 @@ const SwipeableRoutes = () => {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/cars" element={<Cars />} />
           <Route path="/charging" element={<Charging />} />
-          <Route path="/map" element={<Map />} />
+          <Route path="/map" element={<Suspense fallback={<MapFallback />}><Map /></Suspense>} />
           <Route path="/settings" element={<Settings />} />
           <Route
             path="/admin/stations"
             element={
               <AdminRoute>
-                <AdminStations />
+                <Suspense fallback={<AdminFallback />}>
+                  <AdminStations />
+                </Suspense>
               </AdminRoute>
             }
           />
