@@ -18,6 +18,8 @@ import { useCars } from "@/features/cars/hooks";
 import { useSettings } from "@/features/settings/hooks";
 import { useDashboard, useBattery, useBatteryHistory } from "@/features/analytics/hooks";
 import { isInsufficient } from "@/features/analytics/api";
+import { EfficiencyChart } from "@/components/EfficiencyChart";
+import type { EfficiencyPoint } from "@/components/EfficiencyChart";
 
 const totalKwh = (s: ChargingSession) =>
   s.kwh_charged ?? (s.energy_peak_kwh ?? 0) + (s.energy_mid_kwh ?? 0) + (s.energy_offpeak_kwh ?? 0);
@@ -57,6 +59,27 @@ export default function Index() {
     soh: s.soh_pct,
   }));
   const latestSoh = battery && !isInsufficient(battery) ? battery : null;
+
+  // Build car id→name map once (used by efficiency chart tooltip).
+  const carNameById = useMemo(
+    () => new Map(cars.map((c) => [c.id, c.name])),
+    [cars],
+  );
+
+  // Efficiency trend: sessions with a non-null kWh/100km reading, sorted oldest first.
+  const efficiencyData = useMemo<EfficiencyPoint[]>(() => {
+    const qualifying = sessions
+      .filter((s) => s.efficiency_kwh_per_100km != null)
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+    return qualifying.map((s) => ({
+      date: new Date(s.started_at).toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
+      efficiency: s.efficiency_kwh_per_100km!,
+      carName: carNameById.get(s.car_id) ?? '—',
+    }));
+  }, [sessions, carNameById, language]);
 
   const stats = useMemo(() => {
     const rates = ratesFromSettings(settings);
@@ -434,6 +457,20 @@ export default function Index() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Efficiency trend chart */}
+        <Card className="rounded-xl sm:rounded-2xl shadow-lg border-border/50 overflow-hidden mb-6 sm:mb-8">
+          <CardHeader className="bg-gradient-to-r from-primary/10 to-accent/10 p-4 sm:p-6">
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              {language === 'fa' ? 'روند مصرف انرژی (kWh/100km)' : 'Efficiency Trend (kWh/100km)'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-2 sm:p-4">
+            <EfficiencyChart data={efficiencyData} />
+          </CardContent>
+        </Card>
+
       </main>
     </div>
   );
