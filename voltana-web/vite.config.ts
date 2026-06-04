@@ -30,4 +30,21 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Stop esbuild pre-bundling leaflet — its CJS/ESM mixed exports confuse the
+  // pre-bundler and produce a module that later breaks Rollup's concatenation.
+  optimizeDeps: {
+    exclude: ["leaflet"],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Isolate leaflet + react-leaflet in their own chunk so Rollup never
+        // inlines them into the main bundle. Inlining causes class declarations
+        // to be renamed by the minifier, which breaks `new L.Map()` et al.
+        manualChunks: {
+          leaflet: ["leaflet", "react-leaflet"],
+        },
+      },
+    },
+  },
 }));
