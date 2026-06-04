@@ -1,0 +1,35 @@
+[Unit]
+Description=Voltana EV Platform (Docker Compose)
+Documentation=https://github.com/Ali-roohy/voltana-v2
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/voltana
+
+# Load environment — DOMAIN and other production vars
+EnvironmentFile=/opt/voltana/.env
+
+ExecStartPre=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml pull --quiet
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+# Restart the stack on failure (e.g. after a host reboot where docker wasn't ready)
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+
+User=voltana
+Group=voltana
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

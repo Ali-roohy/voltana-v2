@@ -1,0 +1,25 @@
+# Production Compose overlay.
+# Always use alongside the base docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml <command>
+#
+# What this overlay changes:
+#   - nginx: exposes port 443, mounts Let's Encrypt certs + certbot webroot
+#             + voltana-web/dist for React SPA static serving
+#   - mailhog: gated behind the "dev" profile (not started in production)
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Note: deploy.sh generates nginx/nginx.conf from infra/nginx/nginx.prod.conf
+      # via envsubst before starting nginx — the base compose already mounts
+      # ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - ./voltana-web/dist:/usr/share/nginx/html:ro
+
+  mailhog:
+    profiles:
+      - dev

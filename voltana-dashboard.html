@@ -715,11 +715,11 @@
     <div class="stats-row">
       <div class="stat-card fade-in" style="--c:var(--done)">
         <div class="stat-label">Done</div>
-        <div class="stat-value">24</div>
+        <div class="stat-value">25</div>
       </div>
       <div class="stat-card fade-in" style="--c:var(--ready)">
         <div class="stat-label">Ready</div>
-        <div class="stat-value">1</div>
+        <div class="stat-value">0</div>
       </div>
       <div class="stat-card fade-in" style="--c:var(--inprog)">
         <div class="stat-label">In Progress</div>
@@ -805,7 +805,7 @@
         <div>
           <div class="task-col-header bg-ready">
             <span class="s-ready">Ready</span>
-            <span class="col-count s-ready">1</span>
+            <span class="col-count s-ready">0</span>
           </div>
           <div id="col-ready"></div>
         </div>
@@ -841,7 +841,7 @@
         <div>
           <div class="task-col-header bg-done">
             <span class="s-done">Done</span>
-            <span class="col-count s-done">24</span>
+            <span class="col-count s-done">25</span>
           </div>
           <div id="col-done"></div>
         </div>
@@ -1282,7 +1282,7 @@ const TASKS = [
   {
     id: 'TASK-0025',
     name: 'VPS Production Deployment',
-    status: 'READY',
+    status: 'DONE',
     phase: 3,
     persona: 'developer',
     reviewer: 'dev_supervisor + security',
@@ -1372,20 +1372,20 @@ Output handoff to developer for any doc file changes.`,
 };
 
 const ACTIVITY = [
-  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>78f71fe</strong> — chore: post-commit hook, dashboard sync, TASK-0025, Bale/TG bot fixes', time: '0 seconds ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>6e35b4d</strong> — feat: TASK-0022 — Advanced Efficiency Chart', time: '62 minutes ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>3bbe064</strong> — feat: TASK-0021 — Currency Unit in Settings', time: '65 minutes ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>8dd76b0</strong> — feat: TASK-0020 — Font Selection in Settings', time: '79 minutes ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>a10f77f</strong> — feat: TASK-0019 — Theme System with Car Colors', time: '83 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>16c04c5</strong> — feat: TASK-0025 — VPS Production Deployment', time: '0 seconds ago' },
+  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>3f70312</strong> — chore: post-commit hook, dashboard sync, TASK-0025, Bale/TG bot fixes', time: '21 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>6e35b4d</strong> — feat: TASK-0022 — Advanced Efficiency Chart', time: '83 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>3bbe064</strong> — feat: TASK-0021 — Currency Unit in Settings', time: '87 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>8dd76b0</strong> — feat: TASK-0020 — Font Selection in Settings', time: '2 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>a10f77f</strong> — feat: TASK-0019 — Theme System with Car Colors', time: '2 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>088f07a</strong> — feat: TASK-0023 + TASK-0024 — bug fixes: total_km + session close button', time: '9 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>bed6ab7</strong> — feat: TASK-0017 — OTP Login via Bale/Telegram Bot', time: '10 hours ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>0b98cf0</strong> — feat: TASK-0018 — Odometer Tracking for Efficiency Metrics', time: '14 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>0b98cf0</strong> — feat: TASK-0018 — Odometer Tracking for Efficiency Metrics', time: '15 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>d100510</strong> — feat: TASK-0017 architect contract + TASK-0018 odometer spec', time: '16 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>56f9989</strong> — feat: TASK-0016 — Admin UI for Charging Stations', time: '18 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>0c8c312</strong> — feat: pm — create TASK-0017 (OTP login via Bale/Telegram bot)', time: '19 hours ago' },
   { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>ec6f09f</strong> — docs: record enforce_admins=false decision for main protection', time: '20 hours ago' },
   { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>30c7550</strong> — feat: pm — create TASK-0016 (admin stations UI); TASK-0015 protection applied + repo public', time: '20 hours ago' },
-  { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>46e6656</strong> — docs: track branch-protection follow-up (blocked by GitHub plan)', time: '20 hours ago' },
 ];
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
