@@ -120,11 +120,50 @@ for (const [key, count] of Object.entries(colUpdates)) {
   );
 }
 
-// ── 7. Write dashboard back ───────────────────────────────────────────────────
+// ── 7. Update ACTIVITY feed from git log ─────────────────────────────────────
+
+try {
+  const { execSync } = require('child_process');
+  const gitOut = execSync("git log --format='%h|%s|%cr' -14", { cwd: ROOT, encoding: 'utf8' }).trim();
+  const lines  = gitOut.split('\n').filter(Boolean);
+
+  const iconMap = [
+    [/^feat:/,      '✅', 'rgba(16,185,129,0.2)'],
+    [/^fix:/,       '🐛', 'rgba(245,158,11,0.2)'],
+    [/^chore:/,     '🔧', 'rgba(100,116,139,0.2)'],
+    [/^docs:/,      '📖', 'rgba(99,102,241,0.2)'],
+    [/^refactor:/,  '♻️', 'rgba(14,165,233,0.2)'],
+    [/^test:/,      '🧪', 'rgba(168,85,247,0.2)'],
+  ];
+
+  const entries = lines.map(line => {
+    const parts   = line.split('|');
+    const hash    = parts[0];
+    const subject = parts.slice(1, -1).join('|');
+    const relTime = parts[parts.length - 1];
+    if (!hash || !subject) return null;
+
+    let icon = '📝', color = 'rgba(99,102,241,0.2)';
+    for (const [re, i, c] of iconMap) {
+      if (re.test(subject)) { icon = i; color = c; break; }
+    }
+
+    const safe = subject.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+                        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `  { icon: '${icon}', color: '${color}', text: '<strong>${hash}</strong> — ${safe}', time: '${relTime.trim()}' }`;
+  }).filter(Boolean);
+
+  const newActivity = `const ACTIVITY = [\n${entries.join(',\n')},\n];`;
+  html = html.replace(/const ACTIVITY = \[[\s\S]*?\];/, newActivity);
+} catch (_) {
+  // git not available — skip activity update
+}
+
+// ── 8. Write dashboard back ───────────────────────────────────────────────────
 
 fs.writeFileSync(DASHBOARD, html, 'utf8');
 
-// ── 8. Report ─────────────────────────────────────────────────────────────────
+// ── 9. Report ─────────────────────────────────────────────────────────────────
 
 const total = Object.keys(taskStatuses).length;
 const summary = Object.entries(counts)

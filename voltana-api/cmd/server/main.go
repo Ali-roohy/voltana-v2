@@ -108,8 +108,13 @@ func main() {
 		go poller.Run(ctx)
 	}
 	if tgToken != "" {
-		poller := bot.NewPoller("https://api.telegram.org/bot"+tgToken, "telegram", authSvc)
-		go poller.Run(ctx)
+		tgBaseURL := "https://api.telegram.org/bot" + tgToken
+		if err := bot.ProbeBot(tgBaseURL); err != nil {
+			log.Printf("bot: Telegram unreachable (%v) — poller not started (may be filtered by ISP)", err)
+		} else {
+			poller := bot.NewPoller(tgBaseURL, "telegram", authSvc)
+			go poller.Run(ctx)
+		}
 	}
 
 	// ── Other services ────────────────────────────────────────────────────────

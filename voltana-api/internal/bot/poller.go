@@ -34,9 +34,33 @@ func NewPoller(baseURL, platform string, cb LinkCallback) *Poller {
 	return &Poller{baseURL: baseURL, platform: platform, cb: cb}
 }
 
+// ProbeBot does a single /getMe to check if the bot API is reachable.
+// Returns nil on success, an error with HTTP status on failure.
+func ProbeBot(baseURL string) error {
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Get(baseURL + "/getMe")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		snippet := string(b)
+		if len(snippet) > 80 {
+			snippet = snippet[:80]
+		}
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, snippet)
+	}
+	return nil
+}
+
 // Run starts the polling loop. Call as `go poller.Run(ctx)`.
+// Errors back off exponentially (5 s → 10 s → … → 60 s) to avoid log spam
+// during temporary outages or network filtering.
 func (p *Poller) Run(ctx context.Context) {
 	var offset int64
+	backoff := 5 * time.Second
+	const maxBackoff = 60 * time.Second
 	log.Printf("bot: %s poller started", p.platform)
 	for {
 		if ctx.Err() != nil {
@@ -47,14 +71,21 @@ func (p *Poller) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("bot: %s getUpdates error: %v", p.platform, err)
+			log.Printf("bot: %s getUpdates error (retry in %s): %v", p.platform, backoff, err)
 			select {
-			case <-time.After(5 * time.Second):
+			case <-time.After(backoff):
 			case <-ctx.Done():
 				return
 			}
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
 			continue
 		}
+		backoff = 5 * time.Second // reset on success
 		for _, u := range updates {
 			if u.UpdateID >= offset {
 				offset = u.UpdateID + 1
@@ -186,6 +217,13 @@ func (p *Poller) getUpdates(ctx context.Context, offset int64) ([]update, error)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		snippet := string(b)
+		if len(snippet) > 120 {
+			snippet = snippet[:120]
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, snippet)
+	}
 	var r updatesResponse
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, fmt.Errorf("parse updates: %w", err)
