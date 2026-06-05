@@ -42,15 +42,16 @@ export async function resendVerification(email: string): Promise<void> {
   await api.post("/auth/resend-verification", { email });
 }
 
-// Request a 6-digit OTP sent to the user's linked Bale/Telegram bot chat.
+// Request a 6-digit OTP sent to the user's linked Bale or Telegram bot chat.
 // Always resolves (server replies 202 regardless of whether the phone is linked).
-export async function requestOTP(phone: string): Promise<void> {
-  await api.post("/auth/otp/request", { phone });
+export async function requestOTP(phone: string, platform: "bale" | "telegram"): Promise<void> {
+  await api.post("/auth/otp/request", { phone, platform });
 }
 
 // Verify a 6-digit OTP and log in. Sets the in-memory access token on success.
-export async function verifyOTP(phone: string, code: string): Promise<void> {
-  const res = await api.post<TokenResponse>("/auth/otp/verify", { phone, code });
+// Throws ApiError with code "INVALID_OTP" (+ data.remaining_attempts) or "OTP_LOCKED".
+export async function verifyOTP(phone: string, code: string, platform: "bale" | "telegram"): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/otp/verify", { phone, code, platform });
   authStore.setToken(res.access_token);
 }
 

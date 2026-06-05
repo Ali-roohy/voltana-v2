@@ -15,11 +15,13 @@ const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  data?: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, data?: Record<string, unknown>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -88,7 +90,7 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) {
     const code = (data && (data.code as string)) || "ERROR";
     const message = (data && (data.error as string)) || res.statusText;
-    throw new ApiError(res.status, code, message);
+    throw new ApiError(res.status, code, message, data as Record<string, unknown> | undefined);
   }
   return data as T;
 }

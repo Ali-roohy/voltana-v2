@@ -597,7 +597,7 @@ func TestRequestOTP_UnknownPhone_NoError(t *testing.T) {
 	svc, _, _, sender := newTestServiceWithBale()
 
 	// Anti-enumeration: unknown phone must not error and must not send.
-	err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4")
+	err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale)
 	if err != nil {
 		t.Fatalf("want nil for unknown phone, got %v", err)
 	}
@@ -611,7 +611,7 @@ func TestRequestOTP_LinkedUser_SendsOTP(t *testing.T) {
 	mustRegister(t, svc, "otp@example.com", "password")
 	users.linkBot("otp@example.com", "+989121234567")
 
-	if err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4"); err != nil {
+	if err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale); err != nil {
 		t.Fatalf("RequestOTP: %v", err)
 	}
 	if len(sender.sent) != 1 {
@@ -629,12 +629,12 @@ func TestRequestOTP_RateLimited(t *testing.T) {
 
 	// 3 requests are allowed.
 	for i := 0; i < 3; i++ {
-		if err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5"); err != nil {
+		if err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale); err != nil {
 			t.Fatalf("request %d: %v", i+1, err)
 		}
 	}
 	// 4th must be rejected.
-	err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5")
+	err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale)
 	if !errors.Is(err, service.ErrRateLimitExceeded) {
 		t.Errorf("want ErrRateLimitExceeded on 4th request, got %v", err)
 	}
@@ -646,9 +646,9 @@ func TestCompleteOTPLogin_Success(t *testing.T) {
 	users.linkBot("login@example.com", "+989121111111")
 
 	// Seed an OTP directly in the cache to simulate a prior RequestOTP.
-	store.cache["otp:login:+989121111111"] = "123456"
+	store.cache["otp:login:bale:+989121111111"] = "123456"
 
-	access, refresh, err := svc.CompleteOTPLogin(context.Background(), "+989121111111", "123456", "1.2.3.4")
+	access, refresh, err := svc.CompleteOTPLogin(context.Background(), "+989121111111", "123456", "1.2.3.4", service.PlatformBale)
 	if err != nil {
 		t.Fatalf("CompleteOTPLogin: %v", err)
 	}
@@ -662,9 +662,9 @@ func TestCompleteOTPLogin_WrongCode(t *testing.T) {
 	mustRegister(t, svc, "login2@example.com", "password")
 	users.linkBot("login2@example.com", "+989122222222")
 
-	store.cache["otp:login:+989122222222"] = "999999"
+	store.cache["otp:login:bale:+989122222222"] = "999999"
 
-	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989122222222", "000000", "1.2.3.4")
+	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989122222222", "000000", "1.2.3.4", service.PlatformBale)
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid for wrong code, got %v", err)
 	}
@@ -675,13 +675,13 @@ func TestCompleteOTPLogin_SingleUse(t *testing.T) {
 	mustRegister(t, svc, "login3@example.com", "password")
 	users.linkBot("login3@example.com", "+989123333333")
 
-	store.cache["otp:login:+989123333333"] = "777777"
+	store.cache["otp:login:bale:+989123333333"] = "777777"
 
-	if _, _, err := svc.CompleteOTPLogin(context.Background(), "+989123333333", "777777", "1.2.3.4"); err != nil {
+	if _, _, err := svc.CompleteOTPLogin(context.Background(), "+989123333333", "777777", "1.2.3.4", service.PlatformBale); err != nil {
 		t.Fatalf("first CompleteOTPLogin: %v", err)
 	}
 	// Second use must fail — OTP was consumed.
-	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989123333333", "777777", "1.2.3.4")
+	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989123333333", "777777", "1.2.3.4", service.PlatformBale)
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid on replay, got %v", err)
 	}
@@ -695,12 +695,12 @@ func TestCompleteOTPLogin_AttemptLockout(t *testing.T) {
 	// Simulate 5 prior wrong attempts (stored in cache by IncrWithTTL).
 	store.cache["otp:attempts:+989124444444"] = "5"
 
-	store.cache["otp:login:+989124444444"] = "888888"
+	store.cache["otp:login:bale:+989124444444"] = "888888"
 
 	// Even with the correct code, the account is locked.
-	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989124444444", "888888", "1.2.3.4")
-	if !errors.Is(err, service.ErrOTPInvalid) {
-		t.Errorf("want ErrOTPInvalid when locked, got %v", err)
+	_, _, err := svc.CompleteOTPLogin(context.Background(), "+989124444444", "888888", "1.2.3.4", service.PlatformBale)
+	if !errors.Is(err, service.ErrOTPLocked) {
+		t.Errorf("want ErrOTPLocked when locked, got %v", err)
 	}
 }
 

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { Zap, MailCheck, MessageCircle } from 'lucide-react';
+import { Zap, MailCheck } from 'lucide-react';
 import { z } from 'zod';
 
 const signUpSchema = z.object({
@@ -25,7 +25,222 @@ const loginSchema = z.object({
   password: z.string().min(1, { message: "رمز عبور الزامی است" }),
 });
 
+const OTP_TTL_SECS = 60;
 const OTP_COOLDOWN_SECS = 60;
+
+// ── BotLoginTab ────────────────────────────────────────────────────────────────
+
+interface BotLoginTabProps {
+  platform: 'bale' | 'telegram';
+}
+
+function BotLoginTab({ platform }: BotLoginTabProps) {
+  const navigate = useNavigate();
+  const platformLabel = platform === 'bale' ? 'بله' : 'تلگرام';
+
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [loading, setLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [cooldown, setCooldown] = useState(0);
+  const [otpError, setOtpError] = useState<
+    { type: 'invalid'; remaining: number } | { type: 'locked' } | null
+  >(null);
+
+  const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (otpTimerRef.current) clearInterval(otpTimerRef.current);
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, []);
+
+  const startTimers = () => {
+    setOtpTimer(OTP_TTL_SECS);
+    if (otpTimerRef.current) clearInterval(otpTimerRef.current);
+    otpTimerRef.current = setInterval(() => {
+      setOtpTimer((s) => {
+        if (s <= 1) { clearInterval(otpTimerRef.current!); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+
+    setCooldown(OTP_COOLDOWN_SECS);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setCooldown((s) => {
+        if (s <= 1) { clearInterval(cooldownRef.current!); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  const sendOTP = async (phoneVal: string) => {
+    setLoading(true);
+    try {
+      await requestOTP(phoneVal, platform);
+      setStep('otp');
+      setCode('');
+      setOtpError(null);
+      startTimers();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        toast.error('درخواست زیاد — لطفاً ۱۵ دقیقه دیگر امتحان کنید.');
+      } else {
+        toast.error('خطایی رخ داده است');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim() || loading || cooldown > 0) return;
+    await sendOTP(phone.trim());
+  };
+
+  const handleResend = async () => {
+    if (!phone.trim() || loading || cooldown > 0) return;
+    await sendOTP(phone.trim());
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length !== 6 || loading || otpTimer === 0) return;
+    setLoading(true);
+    try {
+      await verifyOTP(phone.trim(), code, platform);
+      toast.success('ورود با موفقیت انجام شد!');
+      navigate('/');
+    } catch (err) {
+      setCode('');
+      if (err instanceof ApiError && err.status === 401) {
+        if (err.code === 'OTP_LOCKED') {
+          setOtpError({ type: 'locked' });
+        } else {
+          const remaining = (err.data?.remaining_attempts as number) ?? 0;
+          setOtpError({ type: 'invalid', remaining });
+        }
+      } else if (err instanceof ApiError && err.status === 429) {
+        toast.error('درخواست‌های زیاد. لطفاً کمی صبر کنید');
+      } else {
+        toast.error('خطایی رخ داده است');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isExpired = step === 'otp' && otpTimer === 0;
+  const isLocked = otpError?.type === 'locked';
+
+  return (
+    <div className="space-y-4 pt-2">
+      {step === 'phone' ? (
+        <form onSubmit={handleRequest} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`${platform}-phone`}>شماره تلفن</Label>
+            <Input
+              id={`${platform}-phone`}
+              type="tel"
+              placeholder="۰۹۱۲ ۳۴۵ ۶۷۸۹"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              dir="ltr"
+            />
+            <p className="text-xs text-muted-foreground">
+              ابتدا باید در تنظیمات حساب کاربری، شماره تلفن خود را به {platformLabel} متصل کنید.
+            </p>
+          </div>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading || cooldown > 0}
+          >
+            {loading
+              ? 'در حال ارسال...'
+              : cooldown > 0
+              ? `ارسال مجدد (${cooldown}ث)`
+              : 'ارسال کد'}
+          </Button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerify} className="space-y-4">
+          <p className="text-sm text-center text-muted-foreground">
+            کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
+          </p>
+
+          <div className="flex justify-center">
+            <InputOTP
+              maxLength={6}
+              value={code}
+              onChange={setCode}
+              dir="ltr"
+              disabled={isExpired || isLocked}
+            >
+              <InputOTPGroup>
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <InputOTPSlot key={i} index={i} />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
+
+          {/* Countdown */}
+          {!isExpired && !isLocked && (
+            <p className="text-xs text-center text-muted-foreground">
+              کد تا {otpTimer} ثانیه دیگر معتبر است
+            </p>
+          )}
+
+          {/* Error states */}
+          {isLocked && (
+            <p className="text-sm text-center text-destructive font-medium">
+              حساب قفل شده — ۱۵ دقیقه دیگر تلاش کنید.
+            </p>
+          )}
+          {isExpired && !isLocked && (
+            <p className="text-sm text-center text-destructive font-medium">
+              کد منقضی شد — دوباره ارسال کنید
+            </p>
+          )}
+          {otpError?.type === 'invalid' && !isExpired && (
+            <p className="text-sm text-center text-destructive">
+              کد اشتباه است — {otpError.remaining} تلاش باقی مانده
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading || code.length !== 6 || isExpired || isLocked}
+          >
+            {loading ? 'در حال تأیید...' : 'تأیید'}
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
+            onClick={handleResend}
+          >
+            {cooldown > 0 && !isExpired
+              ? `ارسال مجدد (${cooldown}ث)`
+              : 'ارسال مجدد'}
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ── Auth page ──────────────────────────────────────────────────────────────────
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -42,32 +257,6 @@ export default function Auth() {
     password: '',
   });
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
-
-  // OTP tab state
-  const [otpPhone, setOtpPhone] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (cooldownRef.current) clearInterval(cooldownRef.current);
-    };
-  }, []);
-
-  const startCooldown = () => {
-    setOtpCooldown(OTP_COOLDOWN_SECS);
-    cooldownRef.current = setInterval(() => {
-      setOtpCooldown((s) => {
-        if (s <= 1) {
-          clearInterval(cooldownRef.current!);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-  };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,54 +324,6 @@ export default function Auth() {
     }
   };
 
-  const handleOTPRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpPhone.trim()) {
-      toast.error('شماره تلفن را وارد کنید');
-      return;
-    }
-    if (otpCooldown > 0) return;
-    setLoading(true);
-    try {
-      await requestOTP(otpPhone.trim());
-      setOtpSent(true);
-      startCooldown();
-      toast.success('اگر حساب متصل باشد، کد ارسال شد');
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 429) {
-        toast.error('درخواست‌های زیاد. لطفاً کمی صبر کنید');
-      } else {
-        toast.error('خطایی رخ داده است');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOTPVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otpCode.length !== 6) {
-      toast.error('کد ۶ رقمی را وارد کنید');
-      return;
-    }
-    setLoading(true);
-    try {
-      await verifyOTP(otpPhone.trim(), otpCode);
-      toast.success('ورود با موفقیت انجام شد!');
-      navigate('/');
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'INVALID_OTP') {
-        toast.error('کد نامعتبر یا منقضی شده است');
-      } else if (error instanceof ApiError && error.status === 429) {
-        toast.error('درخواست‌های زیاد. لطفاً کمی صبر کنید');
-      } else {
-        toast.error('خطایی رخ داده است');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
       <div className="w-full max-w-md">
@@ -220,174 +361,113 @@ export default function Auth() {
                 </Button>
               </div>
             ) : (
-            <Tabs defaultValue="login" dir="rtl">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="login">{t('auth.login')}</TabsTrigger>
-                <TabsTrigger value="signup">{t('auth.signup')}</TabsTrigger>
-                <TabsTrigger value="otp" className="flex items-center gap-1">
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  بله/تلگرام
-                </TabsTrigger>
-              </TabsList>
+              <Tabs defaultValue="email" dir="rtl">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="email">ایمیل</TabsTrigger>
+                  <TabsTrigger value="bale">بله</TabsTrigger>
+                  <TabsTrigger value="telegram">تلگرام</TabsTrigger>
+                </TabsList>
 
-              {/* ── Email/password login ── */}
-              <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">{t('auth.email')}</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      value={loginData.email}
-                      onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                      required
-                      dir="ltr"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">{t('auth.password')}</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      value={loginData.password}
-                      onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                      required
-                      dir="ltr"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'در حال ورود...' : t('auth.login')}
-                  </Button>
-                </form>
-              </TabsContent>
+                {/* ── ایمیل tab: nested login / signup ── */}
+                <TabsContent value="email">
+                  <Tabs defaultValue="login">
+                    <TabsList className="grid w-full grid-cols-2 mt-1">
+                      <TabsTrigger value="login">{t('auth.login')}</TabsTrigger>
+                      <TabsTrigger value="signup">{t('auth.signup')}</TabsTrigger>
+                    </TabsList>
 
-              {/* ── Sign-up ── */}
-              <TabsContent value="signup">
-                <form onSubmit={handleSignUp} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">{t('auth.name')}</Label>
-                    <Input
-                      id="signup-name"
-                      type="text"
-                      value={signUpData.full_name}
-                      onChange={(e) => setSignUpData({ ...signUpData, full_name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">{t('auth.email')}</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      value={signUpData.email}
-                      onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
-                      required
-                      dir="ltr"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-phone">{t('auth.phone')} (اختیاری)</Label>
-                    <Input
-                      id="signup-phone"
-                      type="tel"
-                      value={signUpData.phone}
-                      onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
-                      dir="ltr"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">{t('auth.password')}</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      value={signUpData.password}
-                      onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
-                      required
-                      dir="ltr"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'در حال ثبت نام...' : t('auth.signup')}
-                  </Button>
-                </form>
-              </TabsContent>
+                    <TabsContent value="login">
+                      <form onSubmit={handleLogin} className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="login-email">{t('auth.email')}</Label>
+                          <Input
+                            id="login-email"
+                            type="email"
+                            value={loginData.email}
+                            onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                            required
+                            dir="ltr"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="login-password">{t('auth.password')}</Label>
+                          <Input
+                            id="login-password"
+                            type="password"
+                            value={loginData.password}
+                            onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                            required
+                            dir="ltr"
+                          />
+                        </div>
+                        <Button type="submit" className="w-full" disabled={loading}>
+                          {loading ? 'در حال ورود...' : t('auth.login')}
+                        </Button>
+                      </form>
+                    </TabsContent>
 
-              {/* ── OTP login via Bale/Telegram ── */}
-              <TabsContent value="otp">
-                <div className="space-y-4 pt-2">
-                  <p className="text-sm text-muted-foreground text-center">
-                    ابتدا در تنظیمات حساب خود را به بله یا تلگرام متصل کنید، سپس اینجا وارد شوید.
-                  </p>
+                    <TabsContent value="signup">
+                      <form onSubmit={handleSignUp} className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-name">{t('auth.name')}</Label>
+                          <Input
+                            id="signup-name"
+                            type="text"
+                            value={signUpData.full_name}
+                            onChange={(e) => setSignUpData({ ...signUpData, full_name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-email">{t('auth.email')}</Label>
+                          <Input
+                            id="signup-email"
+                            type="email"
+                            value={signUpData.email}
+                            onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
+                            required
+                            dir="ltr"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-phone">{t('auth.phone')} (اختیاری)</Label>
+                          <Input
+                            id="signup-phone"
+                            type="tel"
+                            value={signUpData.phone}
+                            onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
+                            dir="ltr"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-password">{t('auth.password')}</Label>
+                          <Input
+                            id="signup-password"
+                            type="password"
+                            value={signUpData.password}
+                            onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
+                            required
+                            dir="ltr"
+                          />
+                        </div>
+                        <Button type="submit" className="w-full" disabled={loading}>
+                          {loading ? 'در حال ثبت نام...' : t('auth.signup')}
+                        </Button>
+                      </form>
+                    </TabsContent>
+                  </Tabs>
+                </TabsContent>
 
-                  {!otpSent ? (
-                    <form onSubmit={handleOTPRequest} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="otp-phone">شماره تلفن (E.164 یا ایرانی)</Label>
-                        <Input
-                          id="otp-phone"
-                          type="tel"
-                          placeholder="+98912..."
-                          value={otpPhone}
-                          onChange={(e) => setOtpPhone(e.target.value)}
-                          required
-                          dir="ltr"
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={loading || otpCooldown > 0}
-                      >
-                        {loading
-                          ? 'در حال ارسال...'
-                          : otpCooldown > 0
-                          ? `ارسال مجدد (${otpCooldown}s)`
-                          : 'ارسال کد'}
-                      </Button>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleOTPVerify} className="space-y-4">
-                      <p className="text-sm text-center">
-                        کد ۶ رقمی ارسال‌شده به بله/تلگرام را وارد کنید:
-                      </p>
-                      <div className="flex justify-center">
-                        <InputOTP
-                          maxLength={6}
-                          value={otpCode}
-                          onChange={setOtpCode}
-                          dir="ltr"
-                        >
-                          <InputOTPGroup>
-                            {[0,1,2,3,4,5].map((i) => (
-                              <InputOTPSlot key={i} index={i} />
-                            ))}
-                          </InputOTPGroup>
-                        </InputOTP>
-                      </div>
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={loading || otpCode.length !== 6}
-                      >
-                        {loading ? 'در حال تأیید...' : 'تأیید و ورود'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="w-full"
-                        disabled={otpCooldown > 0}
-                        onClick={() => {
-                          setOtpSent(false);
-                          setOtpCode('');
-                        }}
-                      >
-                        {otpCooldown > 0 ? `ارسال مجدد (${otpCooldown}s)` : 'ارسال مجدد'}
-                      </Button>
-                    </form>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+                {/* ── بله tab ── */}
+                <TabsContent value="bale">
+                  <BotLoginTab platform="bale" />
+                </TabsContent>
+
+                {/* ── تلگرام tab ── */}
+                <TabsContent value="telegram">
+                  <BotLoginTab platform="telegram" />
+                </TabsContent>
+              </Tabs>
             )}
           </CardContent>
         </Card>

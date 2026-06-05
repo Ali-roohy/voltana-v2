@@ -39,8 +39,8 @@ const (
 	resendEmailMax       = int64(3)
 	resendCooldown       = 60 * time.Second
 
-	// OTP rate limits and TTLs (TASK-0017).
-	otpTTL             = 5 * time.Minute
+	// OTP rate limits and TTLs (TASK-0017 / TASK-0026).
+	otpTTL             = 60 * time.Second // B4: 60s to match the UI countdown
 	otpAttemptsTTL     = 5 * time.Minute
 	otpMaxAttempts     = int64(5)
 	otpPhoneRateWindow = 15 * time.Minute
@@ -72,10 +72,20 @@ var (
 	ErrInvalidVerificationToken = errors.New("invalid or expired verification token")
 
 	ErrOTPInvalid    = errors.New("invalid or expired OTP")
+	ErrOTPLocked     = errors.New("OTP attempts exhausted — account locked")
 	ErrNoBotLinked   = errors.New("no bot chat linked to this account")
 	ErrInvalidPhone  = errors.New("invalid phone number")
 	ErrNoBotConfig   = errors.New("no bot configured")
 )
+
+// OTPInvalidError wraps ErrOTPInvalid and carries the remaining-attempt count
+// so the HTTP handler can surface it in the 401 body (B3, TASK-0026).
+type OTPInvalidError struct {
+	RemainingAttempts int64
+}
+
+func (e *OTPInvalidError) Error() string { return ErrOTPInvalid.Error() }
+func (e *OTPInvalidError) Unwrap() error { return ErrOTPInvalid }
 
 // Mailer sends account emails. Implemented by internal/mailer; mocked in tests
 // so SMTP is never reached during unit tests.
@@ -319,8 +329,9 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims,
 // ── OTP login (Slice B, TASK-0017) ────────────────────────────────────────────
 
 // RequestOTP generates and delivers a 6-digit OTP to the user's linked bot
-// chat. Always returns nil (anti-enumeration) unless a rate limit is exceeded.
-func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string) error {
+// chat. platform selects which messenger to route to (B1/B2, TASK-0026).
+// Always returns nil (anti-enumeration) unless a rate limit is exceeded.
+func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform Platform) error {
 	// Per-IP guard (10/15m)
 	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:ip:"+ip, otpIPRateMax, otpIPRateWindow); err != nil {
 		return fmt.Errorf("rate limit: %w", err)
@@ -343,8 +354,6 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string) error {
 
 	// 60s cooldown — skip the send but still return nil.
 	_, _ = s.tokens.CheckRateLimit(ctx, "otp:cooldown:"+normalized, 1, otpCooldownTTL)
-	// (result ignored — we want the cooldown key to be set on first call but we send
-	// unconditionally here; the 60s re-request guard is informational for the UI)
 
 	// Look up user + linked chat. Unknown phone or no chat → silent return.
 	user, err := s.users.FindByPhone(ctx, normalized)
@@ -358,48 +367,53 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string) error {
 		return nil
 	}
 
-	if err := s.tokens.CacheSet(ctx, "otp:login:"+normalized, code, otpTTL); err != nil {
+	// B2: namespace Redis key by platform so Bale/Telegram OTPs don't collide.
+	otpKey := "otp:login:" + string(platform) + ":" + normalized
+	if err := s.tokens.CacheSet(ctx, otpKey, code, otpTTL); err != nil {
 		log.Printf("otp: cache set failed for phone: %v", err)
 		return nil
 	}
 
-	if err := s.resolveAndSendOTP(ctx, user, code); err != nil {
+	if err := s.resolveAndSendOTP(ctx, user, code, platform); err != nil {
 		log.Printf("otp: send failed: %v", err)
 	}
 	return nil
 }
 
 // CompleteOTPLogin validates the OTP and issues a token pair. Returns
-// ErrOTPInvalid for wrong, expired, or already-consumed codes (no enumeration).
-func (s *AuthService) CompleteOTPLogin(ctx context.Context, phone, code, ip string) (accessToken, refreshToken string, err error) {
+// *OTPInvalidError for wrong/expired codes or ErrOTPLocked after exhaustion
+// (B2/B3, TASK-0026). Platform is used to namespace the Redis key.
+func (s *AuthService) CompleteOTPLogin(ctx context.Context, phone, code, ip string, platform Platform) (accessToken, refreshToken string, err error) {
 	normalized, normErr := normalizePhone(phone)
 	if normErr != nil {
-		return "", "", ErrOTPInvalid
+		return "", "", &OTPInvalidError{RemainingAttempts: otpMaxAttempts}
 	}
 
 	// Check attempt lockout BEFORE consuming the OTP.
 	attempts, _, _ := s.tokens.CacheGet(ctx, "otp:attempts:"+normalized)
-	if countStr(attempts) >= otpMaxAttempts {
-		return "", "", ErrOTPInvalid
+	currentAttempts := countStr(attempts)
+	if currentAttempts >= otpMaxAttempts {
+		return "", "", ErrOTPLocked
 	}
+	remaining := otpMaxAttempts - currentAttempts
 
-	// Single-use consume: GetDel returns ("", false) when the key is absent.
-	stored, ok, err := s.tokens.CacheGetDel(ctx, "otp:login:"+normalized)
+	// Single-use consume: GetDel returns ("", false) when the key is absent (expired).
+	otpKey := "otp:login:" + string(platform) + ":" + normalized
+	stored, ok, err := s.tokens.CacheGetDel(ctx, otpKey)
 	if err != nil {
 		return "", "", fmt.Errorf("otp: cache: %w", err)
 	}
 	if !ok || stored == "" {
-		return "", "", ErrOTPInvalid
+		return "", "", &OTPInvalidError{RemainingAttempts: remaining}
 	}
 
 	// Constant-time comparison to prevent timing-based enumeration.
 	if !constantTimeEqual(stored, code) {
 		cnt, _ := s.tokens.IncrWithTTL(ctx, "otp:attempts:"+normalized, otpAttemptsTTL)
 		if cnt >= otpMaxAttempts {
-			// Locked: delete the OTP so further tries fail immediately.
-			_ = s.tokens.CacheDel(ctx, "otp:login:"+normalized)
+			return "", "", ErrOTPLocked
 		}
-		return "", "", ErrOTPInvalid
+		return "", "", &OTPInvalidError{RemainingAttempts: otpMaxAttempts - cnt}
 	}
 
 	// Success: clear attempt counter.
@@ -407,7 +421,7 @@ func (s *AuthService) CompleteOTPLogin(ctx context.Context, phone, code, ip stri
 
 	user, err := s.users.FindByPhone(ctx, normalized)
 	if err != nil {
-		return "", "", ErrOTPInvalid
+		return "", "", &OTPInvalidError{RemainingAttempts: remaining}
 	}
 
 	return s.issueTokenPair(ctx, user.ID)
@@ -526,21 +540,31 @@ func (s *AuthService) issueTokenPair(ctx context.Context, userID uuid.UUID) (str
 	return accessToken, refreshToken, nil
 }
 
-// resolveAndSendOTP picks Bale → Telegram with failover on transport error.
-func (s *AuthService) resolveAndSendOTP(ctx context.Context, user *domain.User, code string) error {
-	if s.baleSender != nil && user.BaleChatID != nil {
-		err := s.baleSender.Send(ctx, *user.BaleChatID, code)
-		if err == nil {
-			return nil
+// resolveAndSendOTP routes the OTP to the requested platform (B1, TASK-0026).
+// Telegram goes directly to Telegram only; Bale uses Bale-first with Telegram
+// failover (legacy behaviour preserved as the default).
+func (s *AuthService) resolveAndSendOTP(ctx context.Context, user *domain.User, code string, platform Platform) error {
+	switch platform {
+	case PlatformTelegram:
+		if s.tgSender != nil && user.TelegramChatID != nil {
+			return s.tgSender.Send(ctx, *user.TelegramChatID, code)
 		}
-		log.Printf("otp: Bale send failed, trying Telegram: %v", err)
+		log.Printf("otp: Telegram not linked for user=%s", user.ID)
+		return nil
+	default: // PlatformBale (and any unrecognised value)
+		if s.baleSender != nil && user.BaleChatID != nil {
+			err := s.baleSender.Send(ctx, *user.BaleChatID, code)
+			if err == nil {
+				return nil
+			}
+			log.Printf("otp: Bale send failed, trying Telegram: %v", err)
+		}
+		if s.tgSender != nil && user.TelegramChatID != nil {
+			return s.tgSender.Send(ctx, *user.TelegramChatID, code)
+		}
+		log.Printf("otp: no sender available for user=%s", user.ID)
+		return nil
 	}
-	if s.tgSender != nil && user.TelegramChatID != nil {
-		return s.tgSender.Send(ctx, *user.TelegramChatID, code)
-	}
-	// No sender could deliver — log only, the request still returns 202.
-	log.Printf("otp: no sender available for user=%s", user.ID)
-	return nil
 }
 
 // generateVerificationToken returns a high-entropy raw token (base64url, 256-bit)

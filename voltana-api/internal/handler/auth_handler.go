@@ -55,12 +55,14 @@ type tokenResponse struct {
 }
 
 type otpRequestBody struct {
-	Phone string `json:"phone" binding:"required"`
+	Phone    string `json:"phone"    binding:"required"`
+	Platform string `json:"platform"` // "bale" | "telegram"; defaults to "bale"
 }
 
 type otpVerifyBody struct {
-	Phone string `json:"phone" binding:"required"`
-	Code  string `json:"code"  binding:"required,len=6"`
+	Phone    string `json:"phone"    binding:"required"`
+	Code     string `json:"code"     binding:"required,len=6"`
+	Platform string `json:"platform"` // "bale" | "telegram"; must match the request
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -243,7 +245,8 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 		return
 	}
 
-	if err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP()); err != nil {
+	platform := normalizePlatform(req.Platform)
+	if err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP(), platform); err != nil {
 		if errors.Is(err, service.ErrRateLimitExceeded) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
 			return
@@ -265,10 +268,21 @@ func (h *AuthHandler) OTPVerify(c *gin.Context) {
 		return
 	}
 
-	access, refresh, err := h.auth.CompleteOTPLogin(c.Request.Context(), req.Phone, req.Code, c.ClientIP())
+	platform := normalizePlatform(req.Platform)
+	access, refresh, err := h.auth.CompleteOTPLogin(c.Request.Context(), req.Phone, req.Code, c.ClientIP(), platform)
 	if err != nil {
-		if errors.Is(err, service.ErrOTPInvalid) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired code", "code": "INVALID_OTP"})
+		// B3: differentiate wrong-code (with remaining attempts) from locked.
+		if errors.Is(err, service.ErrOTPLocked) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "account locked", "code": "OTP_LOCKED"})
+			return
+		}
+		var otpErr *service.OTPInvalidError
+		if errors.As(err, &otpErr) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":              "invalid or expired code",
+				"code":               "INVALID_OTP",
+				"remaining_attempts": otpErr.RemainingAttempts,
+			})
 			return
 		}
 		if errors.Is(err, service.ErrRateLimitExceeded) {
@@ -285,6 +299,15 @@ func (h *AuthHandler) OTPVerify(c *gin.Context) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// normalizePlatform coerces arbitrary input to a valid Platform, defaulting to
+// Bale so the old single-tab behaviour is preserved for callers that omit it.
+func normalizePlatform(p string) service.Platform {
+	if p == string(service.PlatformTelegram) {
+		return service.PlatformTelegram
+	}
+	return service.PlatformBale
+}
 
 func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string) {
 	maxAge := int((30 * 24 * time.Hour).Seconds())
