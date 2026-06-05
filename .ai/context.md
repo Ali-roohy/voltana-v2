@@ -7,8 +7,8 @@
 ## Current State
 
 - **Date**: 2026-06-05
-- **Active Phase**: **Phase 3 — active** (TASK-0026 reopens Phase 3)
-- **Current Sprint**: TASK-0026 — OTP Login UI Redesign (READY, feature → developer)
+- **Active Phase**: **Phase 3 — active** (TASK-0026 reopened / scope expanded)
+- **Current Sprint**: TASK-0026 — Auth Flow Redesign (READY, feature → developer). Revision 2 adds: registration method picker, OTP-based registration (B5 bot cold-start + B6 new endpoint), connectivity reminder toast.
 
 ## Last Completed Task
 - TASK-0025 — VPS Production Deployment (**DONE ✅ CLOSED with caveat** by qa_supervisor, 2026-06-04 — dev_supervisor ✅ + security ✅ + qa ✅ 12/12 code-verified). `scripts/bootstrap-vps.sh` (idempotent: Docker, Node 20, certbot, UFW 22/80/443, voltana user) · `scripts/deploy.sh` (git pull → npm build → envsubst nginx → migrate → rebuild api → nginx reload; `set -euo pipefail`) · `infra/nginx/nginx.prod.conf` (HTTP→HTTPS, TLS 1.2+1.3 Mozilla Intermediate, 6 security headers, `/auth/` rate-limit, SPA fallback) · `infra/systemd/voltana.service` (oneshot+RemainAfterExit, Restart=on-failure) · `docker-compose.prod.yml` (port 443, cert mounts, mailhog dev-profile gate) · `docs/DEPLOY.md` complete guide. **Bonus (same commit):** `nginx/nginx.conf` updated to serve `voltana-web/dist` as SPA (no more Vite preview needed); `docker-compose.yml` mounts the dist. Live smoke: `GET /` → SPA HTML ✓ · `/health` → `{"status":"ok"}` ✓ · `/v1/cars` → 401 ✓. ⚠️ Caveat: live VPS acceptance requires operator-provisioned domain + server.
@@ -161,14 +161,13 @@
 | TASK-0022 | developer | **DONE ✅** (qa_supervisor 2026-06-04) — EfficiencyChart: Recharts ComposedChart, ReferenceArea min/max band, ReferenceLine avg, custom tooltip. Data from existing useChargingSessions (no new API). Placed on Dashboard below SOH chart. Empty state <2 sessions. `tsc 0 · build ✓` |
 | TASK-0023 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Removed `ListByUser`+odometer loop from `GetDashboard`; `TotalKM` now derived from `EfficiencyAggregateByUser` session deltas. Regression test `TestAnalytics_DashboardTotalKMFromSessionDeltas` added. Live smoke: 200→350 km, no-odometer sessions unchanged, car static odometer not used. `go test ✓` |
 | TASK-0024 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Added "بستن"/X close button at bottom of expanded session detail in `Charging.tsx`. Chevron was already present. `tsc 0 · npm build ✓` |
-| TASK-0026 | feature → developer | **READY** — OTP Login UI Redesign. Three-tab login (ایمیل · بله · تلگرام), 60 s countdown, remaining-attempts error, 4 minor backend tweaks (B1–B4). Deps: TASK-0017 ✅ |
+| TASK-0026 | feature → developer | **READY** [Reopened 2026-06-05 — Revision 2]. v1 (commit `f4eb0db`) shipped: three-tab login + B1–B4. Revision 2 adds: registration method picker (3 cards), OTP-based registration (B5 bot cold-start + `reg:contact` Redis + B6 `POST /auth/otp/register`), connectivity toast before all OTP API calls. Feature design complete — ready for developer. |
 
 ## Current Focus
-- **Phase 3 — RE-OPENED (2026-06-05). TASK-0026 added.**
-- **TASK-0026 — OTP Login UI Redesign** (READY, feature → developer). Splits the existing combined
-  "بله/تلگرام" login tab into three distinct tabs (ایمیل · بله · تلگرام), adds a 60-second
-  countdown timer, per-attempt error feedback, and four minor backend tweaks (platform routing,
-  Redis key namespace, `remaining_attempts` in 401, OTP TTL 60 s). Depends on TASK-0017 (✅ CLOSED).
+- **Phase 3 — ACTIVE. TASK-0026 reopened (2026-06-05, Revision 2).**
+- **TASK-0026 — Auth Flow Redesign** (READY, feature → developer). Revision 2 spec complete.
+  Adds: registration method picker + OTP-based account creation (B5/B6) + connectivity reminder.
+  Depends on existing `f4eb0db` work (three-tab login + B1–B4) already on `main`.
 - **After TASK-0026 closes:** Phase 4 planning (researcher / pm pass). Likely candidates: OBD/ELM327
   BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor
   mobile packaging.

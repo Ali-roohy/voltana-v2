@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { register, login, resendVerification, requestOTP, verifyOTP } from '@/features/auth/api';
+import { register, login, resendVerification, requestOTP, verifyOTP, registerWithOTP } from '@/features/auth/api';
 import { ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { Zap, MailCheck } from 'lucide-react';
+import { Zap, MailCheck, Mail, MessageCircle, Send } from 'lucide-react';
 import { z } from 'zod';
 
 const signUpSchema = z.object({
@@ -28,25 +28,33 @@ const loginSchema = z.object({
 const OTP_TTL_SECS = 60;
 const OTP_COOLDOWN_SECS = 60;
 
-// ── BotLoginTab ────────────────────────────────────────────────────────────────
+type OTPError =
+  | { type: 'invalid'; remaining: number }
+  | { type: 'locked' }
+  | { type: 'phone_taken' }
+  | null;
 
-interface BotLoginTabProps {
+// ── BotOTPTab ──────────────────────────────────────────────────────────────────
+// Shared component for both OTP login (mode="login") and OTP registration (mode="register").
+
+interface BotOTPTabProps {
   platform: 'bale' | 'telegram';
+  mode: 'login' | 'register';
+  onBack?: () => void; // register mode: returns to method picker
 }
 
-function BotLoginTab({ platform }: BotLoginTabProps) {
+function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   const navigate = useNavigate();
   const platformLabel = platform === 'bale' ? 'بله' : 'تلگرام';
 
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
   const [cooldown, setCooldown] = useState(0);
-  const [otpError, setOtpError] = useState<
-    { type: 'invalid'; remaining: number } | { type: 'locked' } | null
-  >(null);
+  const [otpError, setOtpError] = useState<OTPError>(null);
 
   const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,6 +87,8 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
   };
 
   const sendOTP = async (phoneVal: string) => {
+    // Connectivity reminder — fires before every OTP API call.
+    toast.warning("فیلترشکن رو روشن کن برای تلگرام، یا بله رو چک کن");
     setLoading(true);
     try {
       await requestOTP(phoneVal, platform);
@@ -113,12 +123,19 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
     if (code.length !== 6 || loading || otpTimer === 0) return;
     setLoading(true);
     try {
-      await verifyOTP(phone.trim(), code, platform);
-      toast.success('ورود با موفقیت انجام شد!');
+      if (mode === 'register') {
+        await registerWithOTP(phone.trim(), code, platform, email.trim() || undefined);
+        toast.success('ثبت نام با موفقیت انجام شد!');
+      } else {
+        await verifyOTP(phone.trim(), code, platform);
+        toast.success('ورود با موفقیت انجام شد!');
+      }
       navigate('/');
     } catch (err) {
       setCode('');
-      if (err instanceof ApiError && err.status === 401) {
+      if (err instanceof ApiError && err.status === 409 && err.code === 'PHONE_TAKEN') {
+        setOtpError({ type: 'phone_taken' });
+      } else if (err instanceof ApiError && err.status === 401) {
         if (err.code === 'OTP_LOCKED') {
           setOtpError({ type: 'locked' });
         } else {
@@ -137,15 +154,20 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
 
   const isExpired = step === 'otp' && otpTimer === 0;
   const isLocked = otpError?.type === 'locked';
+  const isPhoneTaken = otpError?.type === 'phone_taken';
+
+  const helperText = mode === 'register'
+    ? `ابتدا ربات ولتانا را در ${platformLabel} استارت کنید و شماره خود را با ربات به اشتراک بگذارید.`
+    : `ابتدا باید در تنظیمات حساب کاربری، شماره تلفن خود را به ${platformLabel} متصل کنید.`;
 
   return (
     <div className="space-y-4 pt-2">
       {step === 'phone' ? (
         <form onSubmit={handleRequest} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={`${platform}-phone`}>شماره تلفن</Label>
+            <Label htmlFor={`${platform}-${mode}-phone`}>شماره تلفن</Label>
             <Input
-              id={`${platform}-phone`}
+              id={`${platform}-${mode}-phone`}
               type="tel"
               placeholder="۰۹۱۲ ۳۴۵ ۶۷۸۹"
               value={phone}
@@ -153,21 +175,28 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
               required
               dir="ltr"
             />
-            <p className="text-xs text-muted-foreground">
-              ابتدا باید در تنظیمات حساب کاربری، شماره تلفن خود را به {platformLabel} متصل کنید.
-            </p>
+            <p className="text-xs text-muted-foreground">{helperText}</p>
           </div>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loading || cooldown > 0}
-          >
-            {loading
-              ? 'در حال ارسال...'
-              : cooldown > 0
-              ? `ارسال مجدد (${cooldown}ث)`
-              : 'ارسال کد'}
+          {mode === 'register' && (
+            <div className="space-y-2">
+              <Label htmlFor={`${platform}-reg-email`}>ایمیل (اختیاری)</Label>
+              <Input
+                id={`${platform}-reg-email`}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+          )}
+          <Button type="submit" className="w-full" disabled={loading || cooldown > 0}>
+            {loading ? 'در حال ارسال...' : cooldown > 0 ? `ارسال مجدد (${cooldown}ث)` : 'ارسال کد'}
           </Button>
+          {mode === 'register' && onBack && (
+            <Button type="button" variant="ghost" className="w-full" onClick={onBack}>
+              بازگشت
+            </Button>
+          )}
         </form>
       ) : (
         <form onSubmit={handleVerify} className="space-y-4">
@@ -181,7 +210,7 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
               value={code}
               onChange={setCode}
               dir="ltr"
-              disabled={isExpired || isLocked}
+              disabled={isExpired || isLocked || isPhoneTaken}
             >
               <InputOTPGroup>
                 {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -191,14 +220,12 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
             </InputOTP>
           </div>
 
-          {/* Countdown */}
-          {!isExpired && !isLocked && (
+          {!isExpired && !isLocked && !isPhoneTaken && (
             <p className="text-xs text-center text-muted-foreground">
               کد تا {otpTimer} ثانیه دیگر معتبر است
             </p>
           )}
 
-          {/* Error states */}
           {isLocked && (
             <p className="text-sm text-center text-destructive font-medium">
               حساب قفل شده — ۱۵ دقیقه دیگر تلاش کنید.
@@ -214,11 +241,16 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
               کد اشتباه است — {otpError.remaining} تلاش باقی مانده
             </p>
           )}
+          {isPhoneTaken && (
+            <p className="text-sm text-center text-destructive">
+              این شماره قبلاً ثبت شده است — وارد شوید
+            </p>
+          )}
 
           <Button
             type="submit"
             className="w-full"
-            disabled={loading || code.length !== 6 || isExpired || isLocked}
+            disabled={loading || code.length !== 6 || isExpired || isLocked || isPhoneTaken}
           >
             {loading ? 'در حال تأیید...' : 'تأیید'}
           </Button>
@@ -230,9 +262,7 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
             disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
             onClick={handleResend}
           >
-            {cooldown > 0 && !isExpired
-              ? `ارسال مجدد (${cooldown}ث)`
-              : 'ارسال مجدد'}
+            {cooldown > 0 && !isExpired ? `ارسال مجدد (${cooldown}ث)` : 'ارسال مجدد'}
           </Button>
         </form>
       )}
@@ -240,23 +270,17 @@ function BotLoginTab({ platform }: BotLoginTabProps) {
   );
 }
 
-// ── Auth page ──────────────────────────────────────────────────────────────────
+// ── EmailRegisterStep ──────────────────────────────────────────────────────────
 
-export default function Auth() {
-  const navigate = useNavigate();
+interface EmailRegisterStepProps {
+  onBack: () => void;
+  onPendingEmail: (email: string) => void;
+}
+
+function EmailRegisterStep({ onBack, onPendingEmail }: EmailRegisterStepProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [signUpData, setSignUpData] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    phone: '',
-  });
-  const [loginData, setLoginData] = useState({
-    email: '',
-    password: '',
-  });
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [signUpData, setSignUpData] = useState({ email: '', password: '', full_name: '', phone: '' });
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,7 +288,7 @@ export default function Auth() {
     try {
       const validated = signUpSchema.parse(signUpData);
       await register(validated.email, validated.password);
-      setPendingEmail(validated.email);
+      onPendingEmail(validated.email);
       toast.success(t('auth.signupCheckEmail'));
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -280,6 +304,118 @@ export default function Auth() {
       setLoading(false);
     }
   };
+
+  return (
+    <div className="space-y-4 pt-2">
+      <Button type="button" variant="ghost" size="sm" className="mb-1 px-0" onClick={onBack}>
+        ← بازگشت
+      </Button>
+      <form onSubmit={handleSignUp} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="signup-name">{t('auth.name')}</Label>
+          <Input
+            id="signup-name"
+            type="text"
+            value={signUpData.full_name}
+            onChange={(e) => setSignUpData({ ...signUpData, full_name: e.target.value })}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signup-email">{t('auth.email')}</Label>
+          <Input
+            id="signup-email"
+            type="email"
+            value={signUpData.email}
+            onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
+            required
+            dir="ltr"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signup-phone">{t('auth.phone')} (اختیاری)</Label>
+          <Input
+            id="signup-phone"
+            type="tel"
+            value={signUpData.phone}
+            onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
+            dir="ltr"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signup-password">{t('auth.password')}</Label>
+          <Input
+            id="signup-password"
+            type="password"
+            value={signUpData.password}
+            onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
+            required
+            dir="ltr"
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? 'در حال ثبت نام...' : t('auth.signup')}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+// ── RegisterFlow ───────────────────────────────────────────────────────────────
+
+type RegisterStep = 'picker' | 'email' | 'bale' | 'telegram';
+
+interface RegisterFlowProps {
+  onPendingEmail: (email: string) => void;
+}
+
+function RegisterFlow({ onPendingEmail }: RegisterFlowProps) {
+  const [step, setStep] = useState<RegisterStep>('picker');
+
+  if (step === 'email') {
+    return <EmailRegisterStep onBack={() => setStep('picker')} onPendingEmail={onPendingEmail} />;
+  }
+  if (step === 'bale') {
+    return <BotOTPTab platform="bale" mode="register" onBack={() => setStep('picker')} />;
+  }
+  if (step === 'telegram') {
+    return <BotOTPTab platform="telegram" mode="register" onBack={() => setStep('picker')} />;
+  }
+
+  return (
+    <div className="space-y-4 pt-2">
+      <p className="text-sm text-center text-muted-foreground">روش ثبت نام را انتخاب کنید</p>
+      <div className="grid grid-cols-3 gap-3">
+        {([
+          { id: 'email' as RegisterStep, icon: Mail, label: 'ایمیل' },
+          { id: 'bale' as RegisterStep, icon: MessageCircle, label: 'بله' },
+          { id: 'telegram' as RegisterStep, icon: Send, label: 'تلگرام' },
+        ] as const).map(({ id, icon: Icon, label }) => (
+          <Card
+            key={id}
+            className="cursor-pointer hover:border-primary transition-colors"
+            onClick={() => setStep(id)}
+          >
+            <CardContent className="py-4 text-center">
+              <Icon className="w-6 h-6 mx-auto mb-2 text-primary" />
+              <p className="text-sm font-medium">{label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Auth page ──────────────────────────────────────────────────────────────────
+
+export default function Auth() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [mode, setMode] = useState<'login' | 'register'>('login');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -361,22 +497,35 @@ export default function Auth() {
                 </Button>
               </div>
             ) : (
-              <Tabs defaultValue="email" dir="rtl">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="email">ایمیل</TabsTrigger>
-                  <TabsTrigger value="bale">بله</TabsTrigger>
-                  <TabsTrigger value="telegram">تلگرام</TabsTrigger>
-                </TabsList>
+              <>
+                {/* Mode toggle */}
+                <div className="flex gap-2 mb-4">
+                  <Button
+                    variant={mode === 'login' ? 'default' : 'ghost'}
+                    className="flex-1"
+                    onClick={() => setMode('login')}
+                  >
+                    ورود
+                  </Button>
+                  <Button
+                    variant={mode === 'register' ? 'default' : 'ghost'}
+                    className="flex-1"
+                    onClick={() => setMode('register')}
+                  >
+                    ثبت نام
+                  </Button>
+                </div>
 
-                {/* ── ایمیل tab: nested login / signup ── */}
-                <TabsContent value="email">
-                  <Tabs defaultValue="login">
-                    <TabsList className="grid w-full grid-cols-2 mt-1">
-                      <TabsTrigger value="login">{t('auth.login')}</TabsTrigger>
-                      <TabsTrigger value="signup">{t('auth.signup')}</TabsTrigger>
+                {mode === 'login' ? (
+                  // ── Login: three-tab (ایمیل | بله | تلگرام) ──────────────────
+                  <Tabs key="login" defaultValue="email" dir="rtl">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="email">ایمیل</TabsTrigger>
+                      <TabsTrigger value="bale">بله</TabsTrigger>
+                      <TabsTrigger value="telegram">تلگرام</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="login">
+                    <TabsContent value="email">
                       <form onSubmit={handleLogin} className="space-y-4 pt-2">
                         <div className="space-y-2">
                           <Label htmlFor="login-email">{t('auth.email')}</Label>
@@ -406,68 +555,19 @@ export default function Auth() {
                       </form>
                     </TabsContent>
 
-                    <TabsContent value="signup">
-                      <form onSubmit={handleSignUp} className="space-y-4 pt-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-name">{t('auth.name')}</Label>
-                          <Input
-                            id="signup-name"
-                            type="text"
-                            value={signUpData.full_name}
-                            onChange={(e) => setSignUpData({ ...signUpData, full_name: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-email">{t('auth.email')}</Label>
-                          <Input
-                            id="signup-email"
-                            type="email"
-                            value={signUpData.email}
-                            onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
-                            required
-                            dir="ltr"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-phone">{t('auth.phone')} (اختیاری)</Label>
-                          <Input
-                            id="signup-phone"
-                            type="tel"
-                            value={signUpData.phone}
-                            onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
-                            dir="ltr"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-password">{t('auth.password')}</Label>
-                          <Input
-                            id="signup-password"
-                            type="password"
-                            value={signUpData.password}
-                            onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
-                            required
-                            dir="ltr"
-                          />
-                        </div>
-                        <Button type="submit" className="w-full" disabled={loading}>
-                          {loading ? 'در حال ثبت نام...' : t('auth.signup')}
-                        </Button>
-                      </form>
+                    <TabsContent value="bale">
+                      <BotOTPTab platform="bale" mode="login" />
+                    </TabsContent>
+
+                    <TabsContent value="telegram">
+                      <BotOTPTab platform="telegram" mode="login" />
                     </TabsContent>
                   </Tabs>
-                </TabsContent>
-
-                {/* ── بله tab ── */}
-                <TabsContent value="bale">
-                  <BotLoginTab platform="bale" />
-                </TabsContent>
-
-                {/* ── تلگرام tab ── */}
-                <TabsContent value="telegram">
-                  <BotLoginTab platform="telegram" />
-                </TabsContent>
-              </Tabs>
+                ) : (
+                  // ── Register: method picker → step 2 ─────────────────────────
+                  <RegisterFlow key="register" onPendingEmail={setPendingEmail} />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

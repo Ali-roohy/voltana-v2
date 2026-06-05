@@ -52,6 +52,10 @@ const (
 	// Bot-link token TTL (TASK-0017).
 	botLinkTTL        = 10 * time.Minute
 	botPendingLinkTTL = 10 * time.Minute
+
+	// Registration contact TTL (TASK-0026 B5): how long the bot stores
+	// a phone→chatID mapping after a cold-start /start before registration.
+	regContactTTL = 30 * time.Minute
 )
 
 // Platform identifies a messaging platform for OTP delivery.
@@ -76,6 +80,7 @@ var (
 	ErrNoBotLinked   = errors.New("no bot chat linked to this account")
 	ErrInvalidPhone  = errors.New("invalid phone number")
 	ErrNoBotConfig   = errors.New("no bot configured")
+	ErrPhoneTaken    = errors.New("phone already registered")
 )
 
 // OTPInvalidError wraps ErrOTPInvalid and carries the remaining-attempt count
@@ -355,9 +360,16 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 	// 60s cooldown — skip the send but still return nil.
 	_, _ = s.tokens.CheckRateLimit(ctx, "otp:cooldown:"+normalized, 1, otpCooldownTTL)
 
-	// Look up user + linked chat. Unknown phone or no chat → silent return.
+	// Look up user + linked chat.
 	user, err := s.users.FindByPhone(ctx, normalized)
-	if err != nil || (user.BaleChatID == nil && user.TelegramChatID == nil) {
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			// Phone not registered — check for a cold-start registration contact (B5).
+			s.sendRegContactOTP(ctx, normalized, platform)
+		}
+		return nil
+	}
+	if user.BaleChatID == nil && user.TelegramChatID == nil {
 		return nil
 	}
 
@@ -378,6 +390,47 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 		log.Printf("otp: send failed: %v", err)
 	}
 	return nil
+}
+
+// sendRegContactOTP checks Redis for a registration contact stored by the bot
+// cold-start flow (B5) and, if found, sends a registration OTP to that chat.
+func (s *AuthService) sendRegContactOTP(ctx context.Context, normalized string, platform Platform) {
+	contactKey := "reg:contact:" + string(platform) + ":" + normalized
+	chatID, found, err := s.tokens.CacheGet(ctx, contactKey)
+	if err != nil || !found {
+		return
+	}
+
+	code, err := generateOTPCode()
+	if err != nil {
+		log.Printf("otp: reg code generation failed: %v", err)
+		return
+	}
+
+	otpKey := "otp:reg:" + string(platform) + ":" + normalized
+	if err := s.tokens.CacheSet(ctx, otpKey, code, otpTTL); err != nil {
+		log.Printf("otp: reg cache set failed: %v", err)
+		return
+	}
+
+	sender := s.senderForPlatform(platform)
+	if sender == nil {
+		log.Printf("otp: no sender configured for platform %s (reg)", platform)
+		return
+	}
+	if err := sender.Send(ctx, chatID, code); err != nil {
+		log.Printf("otp: reg send failed: %v", err)
+	}
+}
+
+// senderForPlatform returns the OTPSender for the given platform (may be nil).
+func (s *AuthService) senderForPlatform(platform Platform) OTPSender {
+	switch platform {
+	case PlatformTelegram:
+		return s.tgSender
+	default:
+		return s.baleSender
+	}
 }
 
 // CompleteOTPLogin validates the OTP and issues a token pair. Returns
@@ -498,6 +551,87 @@ func (s *AuthService) CompleteBotLink(ctx context.Context, userIDStr, platform, 
 	}
 
 	return s.users.UpdateBotLink(ctx, userID, normalized, baleID, tgID)
+}
+
+// StoreRegistrationContact is called by the bot Poller when a user shares their
+// phone after a bare /start (no link token). Stores phone→chatID in Redis so
+// that a subsequent POST /auth/otp/register can create the account (B5).
+func (s *AuthService) StoreRegistrationContact(ctx context.Context, platform, chatID, phone string) error {
+	normalized, err := normalizePhone(phone)
+	if err != nil {
+		return fmt.Errorf("normalize phone: %w", err)
+	}
+	return s.tokens.CacheSet(ctx, "reg:contact:"+platform+":"+normalized, chatID, regContactTTL)
+}
+
+// CompleteOTPRegister validates a registration OTP and creates a new user
+// identified by phone + bot chat_id. email is optional (B6, TASK-0026).
+func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip string, platform Platform, email *string) (accessToken, refreshToken string, err error) {
+	normalized, normErr := normalizePhone(phone)
+	if normErr != nil {
+		return "", "", &OTPInvalidError{RemainingAttempts: otpMaxAttempts}
+	}
+
+	// Check attempt lockout BEFORE consuming the OTP.
+	attempts, _, _ := s.tokens.CacheGet(ctx, "otp:attempts:"+normalized)
+	currentAttempts := countStr(attempts)
+	if currentAttempts >= otpMaxAttempts {
+		return "", "", ErrOTPLocked
+	}
+	remaining := otpMaxAttempts - currentAttempts
+
+	// Single-use consume from the registration OTP key.
+	otpKey := "otp:reg:" + string(platform) + ":" + normalized
+	stored, ok, cacheErr := s.tokens.CacheGetDel(ctx, otpKey)
+	if cacheErr != nil {
+		return "", "", fmt.Errorf("otp: cache: %w", cacheErr)
+	}
+	if !ok || stored == "" {
+		return "", "", &OTPInvalidError{RemainingAttempts: remaining}
+	}
+
+	// Constant-time comparison to prevent timing-based enumeration.
+	if !constantTimeEqual(stored, code) {
+		cnt, _ := s.tokens.IncrWithTTL(ctx, "otp:attempts:"+normalized, otpAttemptsTTL)
+		if cnt >= otpMaxAttempts {
+			return "", "", ErrOTPLocked
+		}
+		return "", "", &OTPInvalidError{RemainingAttempts: otpMaxAttempts - cnt}
+	}
+
+	// OTP valid — clear attempt counter.
+	_ = s.tokens.CacheDel(ctx, "otp:attempts:"+normalized)
+
+	// Phone already registered → conflict.
+	if _, lookupErr := s.users.FindByPhone(ctx, normalized); lookupErr == nil {
+		return "", "", ErrPhoneTaken
+	}
+
+	// Look up the chatID stored by the bot cold-start (B5).
+	// Anti-enum: if no contact stored → consume OTP, return INVALID_OTP (no hint).
+	contactKey := "reg:contact:" + string(platform) + ":" + normalized
+	chatID, found, redisErr := s.tokens.CacheGetDel(ctx, contactKey)
+	if redisErr != nil || !found {
+		return "", "", &OTPInvalidError{RemainingAttempts: remaining}
+	}
+
+	var baleChatID, tgChatID *string
+	switch platform {
+	case PlatformBale:
+		baleChatID = &chatID
+	default:
+		tgChatID = &chatID
+	}
+
+	user, createErr := s.users.CreateWithPhone(ctx, normalized, email, baleChatID, tgChatID)
+	if createErr != nil {
+		if errors.Is(createErr, repository.ErrPhoneTaken) {
+			return "", "", ErrPhoneTaken
+		}
+		return "", "", fmt.Errorf("otp: create user: %w", createErr)
+	}
+
+	return s.issueTokenPair(ctx, user.ID)
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────

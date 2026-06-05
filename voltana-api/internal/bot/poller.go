@@ -20,6 +20,9 @@ type LinkCallback interface {
 	StorePendingLink(ctx context.Context, platform, chatID, userID string) error
 	ConsumePendingLink(ctx context.Context, platform, chatID string) (userID string, found bool, err error)
 	CompleteBotLink(ctx context.Context, userIDStr, platform, chatID, phone string) error
+	// StoreRegistrationContact stores a phone→chatID mapping when a user shares
+	// their phone after a bare /start (B5, TASK-0026).
+	StoreRegistrationContact(ctx context.Context, platform, chatID, phone string) error
 }
 
 // Poller runs a getUpdates long-poll loop for one bot platform (Bale or
@@ -102,7 +105,7 @@ func (p *Poller) handleUpdate(ctx context.Context, u update) {
 	msg := u.Message
 	chatIDStr := fmt.Sprintf("%d", msg.Chat.ID)
 
-	// "/start <link-token>" — user tapped the deep link.
+	// "/start <link-token>" — user tapped a deep link from Settings.
 	if strings.HasPrefix(msg.Text, "/start ") {
 		token := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/start "))
 		if token == "" {
@@ -123,10 +126,22 @@ func (p *Poller) handleUpdate(ctx context.Context, u update) {
 		return
 	}
 
+	// "/start" with no token — cold-start registration flow (B5).
+	if msg.Text == "/start" {
+		_ = p.sendRegistrationContactRequest(ctx, chatIDStr)
+		return
+	}
+
 	// Contact share — user tapped "share phone" button.
 	if msg.Contact != nil && msg.Contact.PhoneNumber != "" {
 		userID, found, err := p.cb.ConsumePendingLink(ctx, p.platform, chatIDStr)
 		if err != nil || !found {
+			// No pending account-link: store registration contact (B5).
+			if storeErr := p.cb.StoreRegistrationContact(ctx, p.platform, chatIDStr, msg.Contact.PhoneNumber); storeErr != nil {
+				log.Printf("bot: %s store reg contact: %v", p.platform, storeErr)
+				return
+			}
+			_ = p.sendText(ctx, chatIDStr, "✅ شماره ثبت شد. می‌توانید از اپلیکیشن ولتانا ثبت‌نام کنید.")
 			return
 		}
 		if err := p.cb.CompleteBotLink(ctx, userID, p.platform, chatIDStr, msg.Contact.PhoneNumber); err != nil {
@@ -141,6 +156,22 @@ func (p *Poller) sendContactRequest(ctx context.Context, chatID string) error {
 	return p.sendJSON(ctx, "sendMessage", map[string]any{
 		"chat_id": chatID,
 		"text":    "برای اتصال حساب ولتانا، لطفاً شماره تلفن خود را به اشتراک بگذارید:",
+		"reply_markup": map[string]any{
+			"keyboard": [][]map[string]any{
+				{{"text": "📱 اشتراک‌گذاری شماره تلفن", "request_contact": true}},
+			},
+			"one_time_keyboard": true,
+			"resize_keyboard":   true,
+		},
+	})
+}
+
+// sendRegistrationContactRequest prompts a new user to share their phone
+// number as the first step of the cold-start registration flow (B5).
+func (p *Poller) sendRegistrationContactRequest(ctx context.Context, chatID string) error {
+	return p.sendJSON(ctx, "sendMessage", map[string]any{
+		"chat_id": chatID,
+		"text":    "برای ثبت‌نام در ولتانا، شماره تلفن خود را به اشتراک بگذارید:",
 		"reply_markup": map[string]any{
 			"keyboard": [][]map[string]any{
 				{{"text": "📱 اشتراک‌گذاری شماره تلفن", "request_contact": true}},

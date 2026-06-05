@@ -158,6 +158,7 @@ func main() {
 		auth.POST("/resend-verification", authH.ResendVerification)
 		auth.POST("/otp/request",         authH.OTPRequest)
 		auth.POST("/otp/verify",          authH.OTPVerify)
+		auth.POST("/otp/register",        authH.OTPRegister)
 	}
 
 	v1 := r.Group("/v1", middleware.Auth(authSvc))

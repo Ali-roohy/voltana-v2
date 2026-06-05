@@ -65,6 +65,13 @@ type otpVerifyBody struct {
 	Platform string `json:"platform"` // "bale" | "telegram"; must match the request
 }
 
+type otpRegisterBody struct {
+	Phone    string  `json:"phone"    binding:"required"`
+	Code     string  `json:"code"     binding:"required,len=6"`
+	Platform string  `json:"platform" binding:"required"`
+	Email    *string `json:"email"`
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 // Register godoc
@@ -291,6 +298,48 @@ func (h *AuthHandler) OTPVerify(c *gin.Context) {
 		}
 		log.Printf("otp/verify: unexpected error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "verification failed"})
+		return
+	}
+
+	h.setRefreshCookie(c, refresh)
+	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
+}
+
+// OTPRegister godoc
+// POST /auth/otp/register — validates a registration OTP and creates a new account.
+func (h *AuthHandler) OTPRegister(c *gin.Context) {
+	var req otpRegisterBody
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	platform := normalizePlatform(req.Platform)
+	access, refresh, err := h.auth.CompleteOTPRegister(c.Request.Context(), req.Phone, req.Code, c.ClientIP(), platform, req.Email)
+	if err != nil {
+		if errors.Is(err, service.ErrPhoneTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "phone already registered", "code": "PHONE_TAKEN"})
+			return
+		}
+		if errors.Is(err, service.ErrOTPLocked) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "account locked", "code": "OTP_LOCKED"})
+			return
+		}
+		var otpErr *service.OTPInvalidError
+		if errors.As(err, &otpErr) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":              "invalid or expired code",
+				"code":               "INVALID_OTP",
+				"remaining_attempts": otpErr.RemainingAttempts,
+			})
+			return
+		}
+		if errors.Is(err, service.ErrRateLimitExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts"})
+			return
+		}
+		log.Printf("otp/register: unexpected error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "registration failed"})
 		return
 	}
 

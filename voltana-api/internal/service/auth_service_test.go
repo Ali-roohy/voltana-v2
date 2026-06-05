@@ -41,6 +41,26 @@ func (m *mockUserRepo) Create(_ context.Context, email, passwordHash string) (*d
 	return u, nil
 }
 
+func (m *mockUserRepo) CreateWithPhone(_ context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error) {
+	if _, exists := m.byPhone[phone]; exists {
+		return nil, repository.ErrPhoneTaken
+	}
+	u := &domain.User{ID: uuid.New(), Phone: &phone}
+	if email != nil && *email != "" {
+		u.Email = *email
+		m.byEmail[*email] = u
+	}
+	if baleChatID != nil {
+		u.BaleChatID = baleChatID
+	}
+	if telegramChatID != nil {
+		u.TelegramChatID = telegramChatID
+	}
+	m.byPhone[phone] = u
+	m.byID[u.ID] = u
+	return u, nil
+}
+
 func (m *mockUserRepo) FindByEmail(_ context.Context, email string) (*domain.User, error) {
 	u, ok := m.byEmail[email]
 	if !ok {
@@ -727,5 +747,107 @@ func TestInitiateBotLink_ReturnsURL(t *testing.T) {
 	}
 	if !strings.Contains(baleURL, "start=") {
 		t.Errorf("baleURL should contain start token, got %q", baleURL)
+	}
+}
+
+// ── OTP registration (TASK-0026 B5/B6) ────────────────────────────────────────
+
+func TestRequestOTP_RegContactSendsOTP(t *testing.T) {
+	svc, _, store, sender := newTestServiceWithBale()
+	// Phone not in users but a reg:contact was stored by bot cold-start.
+	store.cache["reg:contact:bale:+989121234567"] = "reg_chat_123"
+
+	if err := svc.RequestOTP(context.Background(), "+989121234567", "1.2.3.4", service.PlatformBale); err != nil {
+		t.Fatalf("RequestOTP: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("want 1 OTP sent to reg chat, got %d", len(sender.sent))
+	}
+	if sender.sent[0].chatID != "reg_chat_123" {
+		t.Errorf("want chatID reg_chat_123, got %q", sender.sent[0].chatID)
+	}
+	// OTP should be stored under the reg key (not the login key).
+	if _, ok := store.cache["otp:reg:bale:+989121234567"]; !ok {
+		t.Error("want otp:reg: key in cache after reg OTP send")
+	}
+}
+
+func TestCompleteOTPRegister_Success(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	// Pre-seed reg OTP + contact (normally placed by RequestOTP + bot).
+	store.cache["otp:reg:bale:+989125555555"] = "234567"
+	store.cache["reg:contact:bale:+989125555555"] = "new_chat_456"
+
+	access, refresh, err := svc.CompleteOTPRegister(context.Background(), "+989125555555", "234567", "1.2.3.4", service.PlatformBale, nil)
+	if err != nil {
+		t.Fatalf("CompleteOTPRegister: %v", err)
+	}
+	if access == "" || refresh == "" {
+		t.Error("want non-empty tokens on successful registration")
+	}
+}
+
+func TestCompleteOTPRegister_WithEmail(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	store.cache["otp:reg:bale:+989126666666"] = "111111"
+	store.cache["reg:contact:bale:+989126666666"] = "chat_with_email"
+
+	email := "newuser@example.com"
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989126666666", "111111", "1.2.3.4", service.PlatformBale, &email)
+	if err != nil {
+		t.Fatalf("CompleteOTPRegister with email: %v", err)
+	}
+}
+
+func TestCompleteOTPRegister_PhoneTaken(t *testing.T) {
+	svc, users, store, _ := newTestServiceWithBale()
+	// Existing user with this phone.
+	mustRegister(t, svc, "existing@example.com", "password")
+	users.linkBot("existing@example.com", "+989127777777")
+
+	store.cache["otp:reg:bale:+989127777777"] = "999999"
+	store.cache["reg:contact:bale:+989127777777"] = "taken_chat"
+
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989127777777", "999999", "1.2.3.4", service.PlatformBale, nil)
+	if !errors.Is(err, service.ErrPhoneTaken) {
+		t.Errorf("want ErrPhoneTaken for already-registered phone, got %v", err)
+	}
+}
+
+func TestCompleteOTPRegister_InvalidOTP(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	store.cache["otp:reg:bale:+989128888888"] = "correct"
+	store.cache["reg:contact:bale:+989128888888"] = "some_chat"
+
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989128888888", "wrong1", "1.2.3.4", service.PlatformBale, nil)
+	if !errors.Is(err, service.ErrOTPInvalid) {
+		t.Errorf("want ErrOTPInvalid for wrong code, got %v", err)
+	}
+}
+
+func TestCompleteOTPRegister_NoBotContact(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	// OTP exists but no reg:contact (user never started the bot).
+	store.cache["otp:reg:bale:+989129999999"] = "555555"
+
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989129999999", "555555", "1.2.3.4", service.PlatformBale, nil)
+	// Anti-enum: same error as invalid OTP (no hint that bot contact is missing).
+	if !errors.Is(err, service.ErrOTPInvalid) {
+		t.Errorf("want ErrOTPInvalid when no bot contact stored, got %v", err)
+	}
+}
+
+func TestCompleteOTPRegister_SingleUse(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	store.cache["otp:reg:bale:+989120001111"] = "123123"
+	store.cache["reg:contact:bale:+989120001111"] = "chat_single"
+
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil); err != nil {
+		t.Fatalf("first CompleteOTPRegister: %v", err)
+	}
+	// Second attempt: OTP consumed + contact consumed → OTPInvalid.
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil)
+	if !errors.Is(err, service.ErrOTPInvalid) {
+		t.Errorf("want ErrOTPInvalid on replay, got %v", err)
 	}
 }

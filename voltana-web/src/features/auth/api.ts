@@ -55,6 +55,23 @@ export async function verifyOTP(phone: string, code: string, platform: "bale" | 
   authStore.setToken(res.access_token);
 }
 
+// Verify a registration OTP and create a new account. Sets the in-memory access token on success.
+// Throws ApiError with code "PHONE_TAKEN" (409), "INVALID_OTP" (401), or "OTP_LOCKED" (401).
+export async function registerWithOTP(
+  phone: string,
+  code: string,
+  platform: "bale" | "telegram",
+  email?: string,
+): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/otp/register", {
+    phone,
+    code,
+    platform,
+    ...(email ? { email } : {}),
+  });
+  authStore.setToken(res.access_token);
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");
