@@ -7,10 +7,12 @@
 ## Current State
 
 - **Date**: 2026-06-05
-- **Active Phase**: **Phase 3 — active** (TASK-0026 reopened / scope expanded)
-- **Current Sprint**: TASK-0026 — Auth Flow Redesign (READY, feature → developer). Revision 2 adds: registration method picker, OTP-based registration (B5 bot cold-start + B6 new endpoint), connectivity reminder toast.
+- **Active Phase**: **Phase 3 — COMPLETE** (all tasks DONE)
+- **Current Sprint**: None. TASK-0026 closed. Phase 4 planning (researcher / pm pass) is next.
 
 ## Last Completed Task
+- TASK-0026 — Auth Flow Redesign Revision 2 (**DONE ✅ CLOSED** by qa_supervisor, 2026-06-05 — dev_supervisor ✅ + qa ✅ + qa_supervisor ✅). Registration method picker (3 cards), OTP-based account creation (B5 bot cold-start contact capture + B6 `POST /auth/otp/register`), connectivity reminder toast (`toast.warning`) on all OTP request calls. **Spec blocker resolved:** migration 000012 makes `users.email` nullable (partial unique index) so phone-only accounts can be created without email. `BotOTPTab` unified component (mode="login"|"register"), `RegisterFlow` + `EmailRegisterStep` new components. `go test ✓` (23 tests, +12 new) · `tsc 0` · `npm build ✓`. **⚠️ Caveat: UI not clicked (no browser).**
+
 - TASK-0025 — VPS Production Deployment (**DONE ✅ CLOSED with caveat** by qa_supervisor, 2026-06-04 — dev_supervisor ✅ + security ✅ + qa ✅ 12/12 code-verified). `scripts/bootstrap-vps.sh` (idempotent: Docker, Node 20, certbot, UFW 22/80/443, voltana user) · `scripts/deploy.sh` (git pull → npm build → envsubst nginx → migrate → rebuild api → nginx reload; `set -euo pipefail`) · `infra/nginx/nginx.prod.conf` (HTTP→HTTPS, TLS 1.2+1.3 Mozilla Intermediate, 6 security headers, `/auth/` rate-limit, SPA fallback) · `infra/systemd/voltana.service` (oneshot+RemainAfterExit, Restart=on-failure) · `docker-compose.prod.yml` (port 443, cert mounts, mailhog dev-profile gate) · `docs/DEPLOY.md` complete guide. **Bonus (same commit):** `nginx/nginx.conf` updated to serve `voltana-web/dist` as SPA (no more Vite preview needed); `docker-compose.yml` mounts the dist. Live smoke: `GET /` → SPA HTML ✓ · `/health` → `{"status":"ok"}` ✓ · `/v1/cars` → 401 ✓. ⚠️ Caveat: live VPS acceptance requires operator-provisioned domain + server.
 
 - TASK-0017 — OTP Login via Bale/Telegram Bot (**DONE / CLOSED with caveat** by qa_supervisor,
@@ -161,16 +163,11 @@
 | TASK-0022 | developer | **DONE ✅** (qa_supervisor 2026-06-04) — EfficiencyChart: Recharts ComposedChart, ReferenceArea min/max band, ReferenceLine avg, custom tooltip. Data from existing useChargingSessions (no new API). Placed on Dashboard below SOH chart. Empty state <2 sessions. `tsc 0 · build ✓` |
 | TASK-0023 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Removed `ListByUser`+odometer loop from `GetDashboard`; `TotalKM` now derived from `EfficiencyAggregateByUser` session deltas. Regression test `TestAnalytics_DashboardTotalKMFromSessionDeltas` added. Live smoke: 200→350 km, no-odometer sessions unchanged, car static odometer not used. `go test ✓` |
 | TASK-0024 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Added "بستن"/X close button at bottom of expanded session detail in `Charging.tsx`. Chevron was already present. `tsc 0 · npm build ✓` |
-| TASK-0026 | feature → developer | **READY** [Reopened 2026-06-05 — Revision 2]. v1 (commit `f4eb0db`) shipped: three-tab login + B1–B4. Revision 2 adds: registration method picker (3 cards), OTP-based registration (B5 bot cold-start + `reg:contact` Redis + B6 `POST /auth/otp/register`), connectivity toast before all OTP API calls. Feature design complete — ready for developer. |
+| TASK-0026 | feature → developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-05) — Registration method picker + OTP registration (B5/B6) + connectivity toast. Migration 000012. `go test ✓` (+12) · `tsc 0` · `build ✓`. ⚠️ UI not clicked. |
 
 ## Current Focus
-- **Phase 3 — ACTIVE. TASK-0026 reopened (2026-06-05, Revision 2).**
-- **TASK-0026 — Auth Flow Redesign** (READY, feature → developer). Revision 2 spec complete.
-  Adds: registration method picker + OTP-based account creation (B5/B6) + connectivity reminder.
-  Depends on existing `f4eb0db` work (three-tab login + B1–B4) already on `main`.
-- **After TASK-0026 closes:** Phase 4 planning (researcher / pm pass). Likely candidates: OBD/ELM327
-  BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor
-  mobile packaging.
+- **Phase 3 — COMPLETE (2026-06-05). All 26 tasks DONE.**
+- **Phase 4 planning is next** (researcher / pm pass). Likely candidates: OBD/ELM327 BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor mobile packaging.
 
 ## Phase 3 Summary (2026-06-02 → 2026-06-04)
 Phase 3 delivered: TASK-0013 (map+stations) · 0014 (infra hardening) · 0015 (GitHub governance) · 0016 (admin UI) · 0017 (OTP/Bale bot) · 0018 (odometer) · 0019 (themes) · 0020 (fonts) · 0021 (currency) · 0022 (efficiency chart) · 0023 (total_km fix) · 0024 (session close button) · 0025 (VPS deployment). Also: bot poller exponential backoff + Telegram IPv4 fix + nginx static SPA serving + post-commit dashboard auto-sync hook.
