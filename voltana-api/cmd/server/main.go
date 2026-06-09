@@ -104,7 +104,7 @@ func main() {
 	// (outbound-only HTTPS — no public webhook needed, safe behind NAT / WSL2).
 	ctx := context.Background()
 	if baleToken != "" {
-		poller := bot.NewPoller("https://api.bale.ai/bot"+baleToken, "bale", authSvc)
+		poller := bot.NewPoller("https://ttapi.bale.ai/bot"+baleToken, "bale", authSvc)
 		go poller.Run(ctx)
 	}
 	if tgToken != "" {
@@ -129,6 +129,7 @@ func main() {
 
 	authH      := handler.NewAuthHandler(authSvc, isProd)
 	accountH   := handler.NewAccountHandler(authSvc)
+	adminH     := handler.NewAdminHandler(authSvc)
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
 	chargingH  := handler.NewChargingHandler(chargingSvc)
@@ -195,6 +196,8 @@ func main() {
 		v1.POST("/stations", middleware.AdminOnly(authSvc), stationH.Create)
 		v1.PUT("/stations/:id", middleware.AdminOnly(authSvc), stationH.Update)
 		v1.DELETE("/stations/:id", middleware.AdminOnly(authSvc), stationH.Delete)
+
+		v1.POST("/admin/test-otp", middleware.AdminOnly(authSvc), adminH.TestOTPDelivery)
 	}
 
 	// ── Start ─────────────────────────────────────────────────────────────────

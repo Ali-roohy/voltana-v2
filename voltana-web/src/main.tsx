@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import "./styles/fonts.css";
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {

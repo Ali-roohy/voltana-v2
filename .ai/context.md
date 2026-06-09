@@ -6,9 +6,9 @@
 
 ## Current State
 
-- **Date**: 2026-06-05
-- **Active Phase**: **Phase 3 — COMPLETE** (all tasks DONE)
-- **Current Sprint**: None. TASK-0026 closed. Phase 4 planning (researcher / pm pass) is next.
+- **Date**: 2026-06-08
+- **Active Phase**: **Phase 3** (27 tasks; 26 DONE, 1 READY)
+- **Current Sprint**: TASK-0027 — Admin OTP Test Panel (READY / developer).
 
 ## Last Completed Task
 - TASK-0026 — Auth Flow Redesign Revision 2 (**DONE ✅ CLOSED** by qa_supervisor, 2026-06-05 — dev_supervisor ✅ + qa ✅ + qa_supervisor ✅). Registration method picker (3 cards), OTP-based account creation (B5 bot cold-start contact capture + B6 `POST /auth/otp/register`), connectivity reminder toast (`toast.warning`) on all OTP request calls. **Spec blocker resolved:** migration 000012 makes `users.email` nullable (partial unique index) so phone-only accounts can be created without email. `BotOTPTab` unified component (mode="login"|"register"), `RegisterFlow` + `EmailRegisterStep` new components. `go test ✓` (23 tests, +12 new) · `tsc 0` · `npm build ✓`. **⚠️ Caveat: UI not clicked (no browser).**
@@ -164,10 +164,11 @@
 | TASK-0023 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Removed `ListByUser`+odometer loop from `GetDashboard`; `TotalKM` now derived from `EfficiencyAggregateByUser` session deltas. Regression test `TestAnalytics_DashboardTotalKMFromSessionDeltas` added. Live smoke: 200→350 km, no-odometer sessions unchanged, car static odometer not used. `go test ✓` |
 | TASK-0024 | developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-03) — Added "بستن"/X close button at bottom of expanded session detail in `Charging.tsx`. Chevron was already present. `tsc 0 · npm build ✓` |
 | TASK-0026 | feature → developer | **DONE ✅ CLOSED** (qa_supervisor 2026-06-05) — Registration method picker + OTP registration (B5/B6) + connectivity toast. Migration 000012. `go test ✓` (+12) · `tsc 0` · `build ✓`. ⚠️ UI not clicked. |
+| TASK-0027 | developer | **READY** — Admin OTP Test Panel in Settings. `POST /v1/admin/test-otp {platform}` behind AdminOnly; admin-only tab in Settings with per-platform send + result badge. No migration. |
 
 ## Current Focus
-- **Phase 3 — COMPLETE (2026-06-05). All 26 tasks DONE.**
-- **Phase 4 planning is next** (researcher / pm pass). Likely candidates: OBD/ELM327 BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor mobile packaging.
+- **Phase 3 — active.** TASK-0027 (Admin OTP Test Panel) is READY for developer.
+- **Phase 4 planning** (researcher / pm pass) remains next after TASK-0027 closes. Likely candidates: OBD/ELM327 BLE integration, database backup automation, zero-downtime deploys, CDN/asset caching, Capacitor mobile packaging.
 
 ## Phase 3 Summary (2026-06-02 → 2026-06-04)
 Phase 3 delivered: TASK-0013 (map+stations) · 0014 (infra hardening) · 0015 (GitHub governance) · 0016 (admin UI) · 0017 (OTP/Bale bot) · 0018 (odometer) · 0019 (themes) · 0020 (fonts) · 0021 (currency) · 0022 (efficiency chart) · 0023 (total_km fix) · 0024 (session close button) · 0025 (VPS deployment). Also: bot poller exponential backoff + Telegram IPv4 fix + nginx static SPA serving + post-commit dashboard auto-sync hook.

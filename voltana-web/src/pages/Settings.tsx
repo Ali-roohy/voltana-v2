@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, Zap, Link2, CheckCircle2, Palette } from "lucide-react";
+import { AdminOTPPanel } from "@/features/settings/AdminOTPPanel";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
 import { useMe } from "@/features/auth/hooks";
 import { useBotLink } from "@/features/account/hooks";
@@ -391,6 +392,9 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Admin OTP test panel — visible only to admins */}
+          {me?.is_admin && <AdminOTPPanel me={me} />}
         </div>
       </main>
     </div>

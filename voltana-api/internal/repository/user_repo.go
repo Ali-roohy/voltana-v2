@@ -44,7 +44,9 @@ const userCols = `id, email, password_hash, is_email_verified, is_admin, phone, 
 
 func (r *pgxUserRepository) Create(ctx context.Context, email, passwordHash string) (*domain.User, error) {
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING `+userCols,
+		`INSERT INTO users (email, password_hash, is_admin)
+		 VALUES ($1, $2, NOT EXISTS (SELECT 1 FROM users))
+		 RETURNING `+userCols,
 		email, passwordHash,
 	)
 	return scanUser(row)
@@ -73,8 +75,8 @@ func (r *pgxUserRepository) FindByPhone(ctx context.Context, phone string) (*dom
 
 func (r *pgxUserRepository) CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error) {
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO users (phone, email, password_hash, bale_chat_id, telegram_chat_id)
-		 VALUES ($1, $2, '', $3, $4)
+		`INSERT INTO users (phone, email, password_hash, bale_chat_id, telegram_chat_id, is_admin)
+		 VALUES ($1, $2, '', $3, $4, NOT EXISTS (SELECT 1 FROM users))
 		 RETURNING `+userCols,
 		phone, email, baleChatID, telegramChatID,
 	)

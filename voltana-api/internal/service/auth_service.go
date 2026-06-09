@@ -96,6 +96,7 @@ func (e *OTPInvalidError) Unwrap() error { return ErrOTPInvalid }
 // so SMTP is never reached during unit tests.
 type Mailer interface {
 	SendVerificationEmail(ctx context.Context, toEmail, verifyURL string) error
+	SendOTPEmail(ctx context.Context, toEmail, code string) error
 }
 
 // OTPSender sends a 6-digit OTP to a bot chat. Concrete implementations live
@@ -809,4 +810,56 @@ func (s *AuthService) parseToken(tokenStr, expectedType string) (*voltanaClaims,
 		return nil, ErrInvalidToken
 	}
 	return claims, nil
+}
+
+// TestOTPDelivery sends a fixed test code ("000000") to the admin's own linked
+// channel for the given platform. No Redis key is written — this is fire-and-forget.
+// Returns a human-readable message on success, or a descriptive error.
+func (s *AuthService) TestOTPDelivery(ctx context.Context, userID uuid.UUID, platform string) (string, error) {
+	const testCode = "000000"
+
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("load user: %w", err)
+	}
+
+	switch platform {
+	case "bale":
+		if user.BaleChatID == nil {
+			return "", fmt.Errorf("bale not linked")
+		}
+		sender := s.senderForPlatform(PlatformBale)
+		if sender == nil {
+			return "", fmt.Errorf("bale sender not configured")
+		}
+		if err := sender.Send(ctx, *user.BaleChatID, testCode); err != nil {
+			return "", err
+		}
+		return "OTP sent via bale", nil
+
+	case "telegram":
+		if user.TelegramChatID == nil {
+			return "", fmt.Errorf("telegram not linked")
+		}
+		sender := s.senderForPlatform(PlatformTelegram)
+		if sender == nil {
+			return "", fmt.Errorf("telegram sender not configured")
+		}
+		if err := sender.Send(ctx, *user.TelegramChatID, testCode); err != nil {
+			return "", err
+		}
+		return "OTP sent via telegram", nil
+
+	case "email":
+		if user.Email == "" {
+			return "", fmt.Errorf("email not set")
+		}
+		if err := s.mailer.SendOTPEmail(ctx, user.Email, testCode); err != nil {
+			return "", err
+		}
+		return "OTP sent via email", nil
+
+	default:
+		return "", fmt.Errorf("invalid platform: must be bale, telegram, or email")
+	}
 }

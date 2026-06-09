@@ -21,3 +21,11 @@ export interface SettingsUpdate {
 
 export const getSettings = () => api.get<Settings>("/v1/settings");
 export const updateSettings = (body: SettingsUpdate) => api.put<Settings>("/v1/settings", body);
+
+export interface TestOTPResult {
+  success: boolean;
+  message: string;
+}
+
+export const testOTPDelivery = (platform: "bale" | "telegram" | "email") =>
+  api.post<TestOTPResult>("/v1/admin/test-otp", { platform });

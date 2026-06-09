@@ -1,4 +1,4 @@
-export type FontId = 'vazirmatn' | 'inter' | 'noto-arabic' | 'samim' | 'system';
+export type FontId = 'vazirmatn' | 'sahel' | 'samim' | 'inter' | 'noto-arabic';
 
 export interface AppFont {
   id: FontId;
@@ -21,18 +21,10 @@ export const FONTS: AppFont[] = [
     previewEn: 'Voltana',
   },
   {
-    id: 'inter',
-    nameEn: 'Inter',
-    nameFa: 'اینتر',
-    stack: "'Inter', sans-serif",
-    previewFa: 'ولتانا',
-    previewEn: 'Voltana',
-  },
-  {
-    id: 'noto-arabic',
-    nameEn: 'Noto Arabic',
-    nameFa: 'نوتو عربی',
-    stack: "'Noto Sans Arabic', 'Noto Sans', sans-serif",
+    id: 'sahel',
+    nameEn: 'Sahel',
+    nameFa: 'ساحل',
+    stack: "'Sahel', sans-serif",
     previewFa: 'ولتانا',
     previewEn: 'Voltana',
   },
@@ -45,10 +37,18 @@ export const FONTS: AppFont[] = [
     previewEn: 'Voltana',
   },
   {
-    id: 'system',
-    nameEn: 'System',
-    nameFa: 'سیستم',
-    stack: 'system-ui, -apple-system, sans-serif',
+    id: 'inter',
+    nameEn: 'Inter',
+    nameFa: 'اینتر',
+    stack: "'Inter', sans-serif",
+    previewFa: 'ولتانا',
+    previewEn: 'Voltana',
+  },
+  {
+    id: 'noto-arabic',
+    nameEn: 'Noto Arabic',
+    nameFa: 'نوتو عربی',
+    stack: "'Noto Sans Arabic', 'Noto Sans', sans-serif",
     previewFa: 'ولتانا',
     previewEn: 'Voltana',
   },

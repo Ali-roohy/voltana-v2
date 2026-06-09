@@ -42,6 +42,16 @@ func (m *SMTPMailer) SendVerificationEmail(_ context.Context, toEmail, verifyURL
 	return nil
 }
 
+func (m *SMTPMailer) SendOTPEmail(_ context.Context, toEmail, code string) error {
+	subject := "تست OTP ولتانا"
+	body := "کد تست ولتانا: " + code + "\r\n"
+	msg := buildMessage(m.from, toEmail, subject, body)
+	if err := smtp.SendMail(m.addr, m.auth, m.from, []string{toEmail}, msg); err != nil {
+		return fmt.Errorf("smtp send: %w", err)
+	}
+	return nil
+}
+
 func buildMessage(from, to, subject, body string) []byte {
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
@@ -60,6 +70,11 @@ type LogMailer struct{}
 
 func (LogMailer) SendVerificationEmail(_ context.Context, toEmail, _ string) error {
 	log.Printf("mailer: SMTP not configured — verification email skipped for %s", maskEmail(toEmail))
+	return nil
+}
+
+func (LogMailer) SendOTPEmail(_ context.Context, toEmail, code string) error {
+	log.Printf("mailer: SMTP not configured — OTP test email skipped for %s (code=%s)", maskEmail(toEmail), code)
 	return nil
 }
 

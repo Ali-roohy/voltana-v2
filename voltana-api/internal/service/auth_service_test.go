@@ -244,6 +244,8 @@ func (m *mockMailer) SendVerificationEmail(_ context.Context, toEmail, verifyURL
 	return nil
 }
 
+func (m *mockMailer) SendOTPEmail(_ context.Context, _ string, _ string) error { return nil }
+
 // mockOTPSender records sent OTPs (platform-agnostic for tests).
 type mockOTPSender struct {
 	platform service.Platform
