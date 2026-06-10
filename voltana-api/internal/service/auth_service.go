@@ -677,27 +677,35 @@ func (s *AuthService) issueTokenPair(ctx context.Context, userID uuid.UUID) (str
 
 // resolveAndSendOTP routes the OTP to the requested platform (B1, TASK-0026).
 // Telegram goes directly to Telegram only; Bale uses Bale-first with Telegram
-// failover (legacy behaviour preserved as the default).
+// Each platform is routed strictly — no cross-platform fallback so the user
+// always receives the OTP on the messenger they selected.
 func (s *AuthService) resolveAndSendOTP(ctx context.Context, user *domain.User, code string, platform Platform) error {
 	switch platform {
 	case PlatformTelegram:
-		if s.tgSender != nil && user.TelegramChatID != nil {
-			return s.tgSender.Send(ctx, *user.TelegramChatID, code)
+		if user.TelegramChatID == nil {
+			log.Printf("otp: telegram not linked for user=%s", user.ID)
+			return nil
 		}
-		log.Printf("otp: Telegram not linked for user=%s", user.ID)
+		if s.tgSender == nil {
+			log.Printf("otp: telegram sender not configured")
+			return nil
+		}
+		if err := s.tgSender.Send(ctx, *user.TelegramChatID, code); err != nil {
+			log.Printf("otp: telegram send failed for user=%s: %v", user.ID, err)
+		}
 		return nil
-	default: // PlatformBale (and any unrecognised value)
-		if s.baleSender != nil && user.BaleChatID != nil {
-			err := s.baleSender.Send(ctx, *user.BaleChatID, code)
-			if err == nil {
-				return nil
-			}
-			log.Printf("otp: Bale send failed, trying Telegram: %v", err)
+	default: // PlatformBale
+		if user.BaleChatID == nil {
+			log.Printf("otp: bale not linked for user=%s", user.ID)
+			return nil
 		}
-		if s.tgSender != nil && user.TelegramChatID != nil {
-			return s.tgSender.Send(ctx, *user.TelegramChatID, code)
+		if s.baleSender == nil {
+			log.Printf("otp: bale sender not configured")
+			return nil
 		}
-		log.Printf("otp: no sender available for user=%s", user.ID)
+		if err := s.baleSender.Send(ctx, *user.BaleChatID, code); err != nil {
+			log.Printf("otp: bale send failed for user=%s: %v", user.ID, err)
+		}
 		return nil
 	}
 }

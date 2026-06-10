@@ -26,7 +26,7 @@ func NewBaleSender(token string) *BaleSender { return &BaleSender{token: token} 
 func (s *BaleSender) Platform() service.Platform { return service.PlatformBale }
 
 func (s *BaleSender) Send(ctx context.Context, chatID, code string) error {
-	return sendMessage(ctx, "https://ttapi.bale.ai/bot"+s.token, chatID,
+	return sendMessage(ctx, "https://tapi.bale.ai/bot"+s.token, chatID,
 		fmt.Sprintf("کد ورود ولتانا: *%s*\n\nاین کد ۵ دقیقه اعتبار دارد.", code))
 }
 

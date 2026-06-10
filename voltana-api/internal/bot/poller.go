@@ -28,7 +28,7 @@ type LinkCallback interface {
 // Poller runs a getUpdates long-poll loop for one bot platform (Bale or
 // Telegram). Started as a goroutine from main.go; shuts down when ctx is done.
 type Poller struct {
-	baseURL  string // e.g. "https://ttapi.bale.ai/bot<token>"
+	baseURL  string // e.g. "https://tapi.bale.ai/bot<token>"
 	platform string // "bale" | "telegram" (for keys + logging)
 	cb       LinkCallback
 }

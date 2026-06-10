@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { register, login, resendVerification, requestOTP, verifyOTP, registerWithOTP } from '@/features/auth/api';
 import { ApiError } from '@/lib/api';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { OTPInput6 } from '@/components/ui/otp-input';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Zap, MailCheck, Mail, MessageCircle, Send } from 'lucide-react';
@@ -118,16 +118,15 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     await sendOTP(phone.trim());
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (code.length !== 6 || loading || otpTimer === 0) return;
+  const doVerify = useCallback(async (codeVal: string) => {
+    if (codeVal.length !== 6 || loading || otpTimer === 0) return;
     setLoading(true);
     try {
       if (mode === 'register') {
-        await registerWithOTP(phone.trim(), code, platform, email.trim() || undefined);
+        await registerWithOTP(phone.trim(), codeVal, platform, email.trim() || undefined);
         toast.success('ثبت نام با موفقیت انجام شد!');
       } else {
-        await verifyOTP(phone.trim(), code, platform);
+        await verifyOTP(phone.trim(), codeVal, platform);
         toast.success('ورود با موفقیت انجام شد!');
       }
       navigate('/');
@@ -150,7 +149,8 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, otpTimer, phone, email, mode, platform]);
 
   const isExpired = step === 'otp' && otpTimer === 0;
   const isLocked = otpError?.type === 'locked';
@@ -199,28 +199,20 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           )}
         </form>
       ) : (
-        <form onSubmit={handleVerify} className="space-y-4">
+        <div className="space-y-4">
           <p className="text-sm text-center text-muted-foreground">
             کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
           </p>
 
-          <div className="flex justify-center">
-            <InputOTP
-              maxLength={6}
-              value={code}
-              onChange={setCode}
-              dir="ltr"
-              disabled={isExpired || isLocked || isPhoneTaken}
-            >
-              <InputOTPGroup>
-                {[0, 1, 2, 3, 4, 5].map((i) => (
-                  <InputOTPSlot key={i} index={i} />
-                ))}
-              </InputOTPGroup>
-            </InputOTP>
-          </div>
+          <OTPInput6
+            value={code}
+            onChange={(val) => { setCode(val); setOtpError(null); }}
+            onComplete={doVerify}
+            loading={loading}
+            disabled={isExpired || isLocked || isPhoneTaken}
+          />
 
-          {!isExpired && !isLocked && !isPhoneTaken && (
+          {!isExpired && !isLocked && !isPhoneTaken && !loading && (
             <p className="text-xs text-center text-muted-foreground">
               کد تا {otpTimer} ثانیه دیگر معتبر است
             </p>
@@ -248,14 +240,6 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           )}
 
           <Button
-            type="submit"
-            className="w-full"
-            disabled={loading || code.length !== 6 || isExpired || isLocked || isPhoneTaken}
-          >
-            {loading ? 'در حال تأیید...' : 'تأیید'}
-          </Button>
-
-          <Button
             type="button"
             variant="ghost"
             className="w-full"
@@ -264,7 +248,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           >
             {cooldown > 0 && !isExpired ? `ارسال مجدد (${cooldown}ث)` : 'ارسال مجدد'}
           </Button>
-        </form>
+        </div>
       )}
     </div>
   );
