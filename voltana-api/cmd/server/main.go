@@ -104,7 +104,7 @@ func main() {
 	// (outbound-only HTTPS — no public webhook needed, safe behind NAT / WSL2).
 	ctx := context.Background()
 	if baleToken != "" {
-		poller := bot.NewPoller("https://ttapi.bale.ai/bot"+baleToken, "bale", authSvc)
+		poller := bot.NewPoller("https://tapi.bale.ai/bot"+baleToken, "bale", authSvc)
 		go poller.Run(ctx)
 	}
 	if tgToken != "" {
@@ -127,9 +127,11 @@ func main() {
 
 	chargingSvc.SetHealthRecomputer(analyticsSvc)
 
+	adminSvc   := service.NewAdminService(userRepo)
+
 	authH      := handler.NewAuthHandler(authSvc, isProd)
 	accountH   := handler.NewAccountHandler(authSvc)
-	adminH     := handler.NewAdminHandler(authSvc)
+	adminH     := handler.NewAdminHandler(authSvc, adminSvc)
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
 	chargingH  := handler.NewChargingHandler(chargingSvc)
@@ -198,6 +200,11 @@ func main() {
 		v1.DELETE("/stations/:id", middleware.AdminOnly(authSvc), stationH.Delete)
 
 		v1.POST("/admin/test-otp", middleware.AdminOnly(authSvc), adminH.TestOTPDelivery)
+
+		v1.GET   ("/admin/users",     middleware.AdminOnly(authSvc), adminH.ListUsers)
+		v1.GET   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.GetUser)
+		v1.PUT   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.UpdateUser)
+		v1.DELETE("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.DeleteUser)
 	}
 
 	// ── Start ─────────────────────────────────────────────────────────────────

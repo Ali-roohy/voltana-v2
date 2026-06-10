@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Settings, Car, ChevronDown, Shield } from "lucide-react";
+import { Settings, Car, ChevronDown, Shield, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -83,9 +83,14 @@ export const Header = () => {
 
         <div className="flex items-center gap-1 sm:gap-2">
           {me?.is_admin && (
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/stations")} title={language === "fa" ? "مدیریت ایستگاه‌ها" : "Manage Stations"} className="h-8 w-8 sm:h-10 sm:w-10">
-              <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
+            <>
+              <Button variant="ghost" size="icon" onClick={() => navigate("/admin/users")} title={language === "fa" ? "مدیریت کاربران" : "Manage Users"} className="h-8 w-8 sm:h-10 sm:w-10">
+                <Users className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => navigate("/admin/stations")} title={language === "fa" ? "مدیریت ایستگاه‌ها" : "Manage Stations"} className="h-8 w-8 sm:h-10 sm:w-10">
+                <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Button>
+            </>
           )}
           <Button variant="ghost" size="icon" onClick={() => navigate("/cars")} title={language === "fa" ? "خودروهای من" : "My Cars"} className="h-8 w-8 sm:h-10 sm:w-10">
             <Car className="h-4 w-4 sm:h-5 sm:w-5" />

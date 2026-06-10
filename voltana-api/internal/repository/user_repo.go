@@ -30,6 +30,12 @@ type UserRepository interface {
 	// UpdateBotLink writes the E.164 phone plus whichever chat_id is non-nil,
 	// leaving the other chat_id column untouched (COALESCE semantics).
 	UpdateBotLink(ctx context.Context, userID uuid.UUID, phone string, baleChatID, telegramChatID *string) error
+
+	// Admin user management
+	ListAll(ctx context.Context, limit, offset int) ([]*domain.User, int, error)
+	AdminUpdate(ctx context.Context, id uuid.UUID, isAdmin *bool, isEmailVerified *bool) (*domain.User, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	CountAdmins(ctx context.Context) (int, error)
 }
 
 type pgxUserRepository struct {
@@ -119,6 +125,72 @@ func (r *pgxUserRepository) UpdateBotLink(ctx context.Context, userID uuid.UUID,
 		userID, phone, baleChatID, telegramChatID,
 	)
 	return err
+}
+
+func (r *pgxUserRepository) ListAll(ctx context.Context, limit, offset int) ([]*domain.User, int, error) {
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.Query(ctx,
+		`SELECT `+userCols+` FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		u := &domain.User{}
+		var pgID pgtype.UUID
+		var pgEmail pgtype.Text
+		if err := rows.Scan(
+			&pgID, &pgEmail, &u.PasswordHash, &u.IsEmailVerified, &u.IsAdmin,
+			&u.Phone, &u.BaleChatID, &u.TelegramChatID,
+			&u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		u.ID = uuid.UUID(pgID.Bytes)
+		if pgEmail.Valid {
+			u.Email = pgEmail.String
+		}
+		users = append(users, u)
+	}
+	return users, total, rows.Err()
+}
+
+func (r *pgxUserRepository) AdminUpdate(ctx context.Context, id uuid.UUID, isAdmin *bool, isEmailVerified *bool) (*domain.User, error) {
+	row := r.db.QueryRow(ctx,
+		`UPDATE users SET
+			is_admin          = COALESCE($2, is_admin),
+			is_email_verified = COALESCE($3, is_email_verified),
+			updated_at        = now()
+		 WHERE id = $1
+		 RETURNING `+userCols,
+		id, isAdmin, isEmailVerified,
+	)
+	return scanUser(row)
+}
+
+func (r *pgxUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *pgxUserRepository) CountAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE is_admin = true`).Scan(&n)
+	return n, err
 }
 
 func scanUser(row pgx.Row) (*domain.User, error) {

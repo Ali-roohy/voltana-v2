@@ -25,6 +25,7 @@ import { BottomNav } from "./components/BottomNav";
 // is in scope, which breaks every `new Map()` call elsewhere in the bundle.
 const MapPage = lazy(() => import("./pages/Map"));
 const AdminStations = lazy(() => import("./pages/AdminStations"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 
 const MapFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground text-sm">
@@ -80,6 +81,16 @@ const SwipeableRoutes = () => {
               <AdminRoute>
                 <Suspense fallback={<AdminFallback />}>
                   <AdminStations />
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<AdminFallback />}>
+                  <AdminUsers />
                 </Suspense>
               </AdminRoute>
             }

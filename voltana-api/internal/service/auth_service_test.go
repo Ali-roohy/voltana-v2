@@ -101,6 +101,53 @@ func (m *mockUserRepo) UpdateBotLink(_ context.Context, userID uuid.UUID, phone 
 	return nil
 }
 
+func (m *mockUserRepo) ListAll(_ context.Context, limit, offset int) ([]*domain.User, int, error) {
+	out := make([]*domain.User, 0, len(m.byID))
+	for _, u := range m.byID {
+		out = append(out, u)
+	}
+	return out, len(out), nil
+}
+
+func (m *mockUserRepo) AdminUpdate(_ context.Context, id uuid.UUID, isAdmin *bool, isEmailVerified *bool) (*domain.User, error) {
+	u, ok := m.byID[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	if isAdmin != nil {
+		u.IsAdmin = *isAdmin
+	}
+	if isEmailVerified != nil {
+		u.IsEmailVerified = *isEmailVerified
+	}
+	return u, nil
+}
+
+func (m *mockUserRepo) Delete(_ context.Context, id uuid.UUID) error {
+	u, ok := m.byID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	delete(m.byID, id)
+	if u.Email != "" {
+		delete(m.byEmail, u.Email)
+	}
+	if u.Phone != nil {
+		delete(m.byPhone, *u.Phone)
+	}
+	return nil
+}
+
+func (m *mockUserRepo) CountAdmins(_ context.Context) (int, error) {
+	n := 0
+	for _, u := range m.byID {
+		if u.IsAdmin {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *mockUserRepo) markVerified(email string) {
 	if u, ok := m.byEmail[email]; ok {
 		u.IsEmailVerified = true
