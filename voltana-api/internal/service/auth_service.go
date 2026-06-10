@@ -81,6 +81,8 @@ var (
 	ErrInvalidPhone  = errors.New("invalid phone number")
 	ErrNoBotConfig   = errors.New("no bot configured")
 	ErrPhoneTaken    = errors.New("phone already registered")
+	ErrNoPasswordSet    = errors.New("no password set for this account — use OTP to log in")
+	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
 )
 
 // OTPInvalidError wraps ErrOTPInvalid and carries the remaining-attempt count
@@ -130,6 +132,14 @@ type voltanaClaims struct {
 	Type string `json:"type"`
 }
 
+// OTPDeepLinkInfo is returned by RequestOTP when the delivery method is
+// "deeplink" and the user has no existing chat_id. A nil value means the
+// normal anti-enum 202 path should be used.
+type OTPDeepLinkInfo struct {
+	BaleURL string
+	TgURL   string
+}
+
 // AuthService handles all authentication business logic.
 type AuthService struct {
 	users         repository.UserRepository
@@ -141,10 +151,13 @@ type AuthService struct {
 	dummyHash     []byte // pre-computed to enforce constant-time on unknown email
 
 	// OTP / bot-link (set via SetBotSenders; optional)
-	baleSender     OTPSender
-	tgSender       OTPSender
+	baleSender      OTPSender
+	tgSender        OTPSender
 	baleBotUsername string
 	tgBotUsername   string
+
+	// System settings (optional; nil → treat as contact_share / legacy).
+	sysSettings repository.SystemSettingsRepository
 }
 
 func NewAuthService(
@@ -176,6 +189,12 @@ func (s *AuthService) SetBotSenders(bale, tg OTPSender, baleBotUsername, tgBotUs
 	s.tgSender = tg
 	s.baleBotUsername = baleBotUsername
 	s.tgBotUsername = tgBotUsername
+}
+
+// SetSystemSettingsRepo wires the system-settings repository. When nil (the
+// default), RequestOTP uses the legacy contact_share behaviour.
+func (s *AuthService) SetSystemSettingsRepo(repo repository.SystemSettingsRepository) {
+	s.sysSettings = repo
 }
 
 // ── email/password auth (existing, unchanged) ─────────────────────────────────
@@ -336,61 +355,135 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims,
 
 // RequestOTP generates and delivers a 6-digit OTP to the user's linked bot
 // chat. platform selects which messenger to route to (B1/B2, TASK-0026).
-// Always returns nil (anti-enumeration) unless a rate limit is exceeded.
-func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform Platform) error {
+// Returns (nil, nil) for the normal anti-enum 202 path.
+// Returns (*OTPDeepLinkInfo, nil) when the system is in "deeplink" mode and
+// the user has no existing chat_id — the handler should return 200 + URL.
+// Returns (nil, ErrRateLimitExceeded) when the caller is rate-limited.
+func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform Platform) (*OTPDeepLinkInfo, error) {
 	// Per-IP guard (10/15m)
 	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:ip:"+ip, otpIPRateMax, otpIPRateWindow); err != nil {
-		return fmt.Errorf("rate limit: %w", err)
+		return nil, fmt.Errorf("rate limit: %w", err)
 	} else if !ok {
-		return ErrRateLimitExceeded
+		return nil, ErrRateLimitExceeded
 	}
 
 	normalized, err := normalizePhone(phone)
 	if err != nil {
 		// Anti-enumeration: bad format → still nil, just don't send.
-		return nil
+		return nil, nil
 	}
 
 	// Per-phone guard (3/15m)
 	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:phone:"+normalized, otpPhoneRateMax, otpPhoneRateWindow); err != nil {
-		return fmt.Errorf("rate limit: %w", err)
+		return nil, fmt.Errorf("rate limit: %w", err)
 	} else if !ok {
-		return ErrRateLimitExceeded
+		return nil, ErrRateLimitExceeded
 	}
 
-	// 60s cooldown — skip the send but still return nil.
+	// Check delivery method — default to "contact_share" when not configured.
+	deliveryMethod := "contact_share"
+	if s.sysSettings != nil {
+		if m, err := s.sysSettings.GetOTPDeliveryMethod(ctx); err == nil {
+			deliveryMethod = m
+		}
+	}
+
+	if deliveryMethod == "deeplink" {
+		return s.requestOTPDeeplink(ctx, normalized, platform)
+	}
+
+	// contact_share mode (legacy): 60s cooldown — skip the send but still return nil.
 	_, _ = s.tokens.CheckRateLimit(ctx, "otp:cooldown:"+normalized, 1, otpCooldownTTL)
 
 	// Look up user + linked chat.
-	user, err := s.users.FindByPhone(ctx, normalized)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+	user, lookupErr := s.users.FindByPhone(ctx, normalized)
+	if lookupErr != nil {
+		if errors.Is(lookupErr, repository.ErrNotFound) {
 			// Phone not registered — check for a cold-start registration contact (B5).
 			s.sendRegContactOTP(ctx, normalized, platform)
 		}
-		return nil
+		return nil, nil
 	}
 	if user.BaleChatID == nil && user.TelegramChatID == nil {
-		return nil
+		return nil, nil
 	}
 
 	code, err := generateOTPCode()
 	if err != nil {
 		log.Printf("otp: code generation failed: %v", err)
-		return nil
+		return nil, nil
 	}
 
 	// B2: namespace Redis key by platform so Bale/Telegram OTPs don't collide.
 	otpKey := "otp:login:" + string(platform) + ":" + normalized
 	if err := s.tokens.CacheSet(ctx, otpKey, code, otpTTL); err != nil {
 		log.Printf("otp: cache set failed for phone: %v", err)
-		return nil
+		return nil, nil
 	}
 
 	if err := s.resolveAndSendOTP(ctx, user, code, platform); err != nil {
 		log.Printf("otp: send failed: %v", err)
 	}
-	return nil
+	return nil, nil
+}
+
+// requestOTPDeeplink handles the "deeplink" delivery mode. When the user has no
+// chat_id for the requested platform, it returns a deep-link URL instead of
+// sending an OTP (the OTP is sent later by HandleDeepLinkOTP when the bot
+// receives /start phone_<E164>). When the user already has a chat_id, it sends
+// the OTP directly and returns (nil, nil) → handler uses 202.
+func (s *AuthService) requestOTPDeeplink(ctx context.Context, normalized string, platform Platform) (*OTPDeepLinkInfo, error) {
+	user, err := s.users.FindByPhone(ctx, normalized)
+	hasChatID := false
+	if err == nil {
+		switch platform {
+		case PlatformTelegram:
+			hasChatID = user.TelegramChatID != nil
+		default:
+			hasChatID = user.BaleChatID != nil
+		}
+	}
+
+	if hasChatID {
+		// Already linked — send OTP directly (existing path).
+		code, codeErr := generateOTPCode()
+		if codeErr != nil {
+			log.Printf("otp: deeplink: code gen failed: %v", codeErr)
+			return nil, nil
+		}
+		otpKey := "otp:login:" + string(platform) + ":" + normalized
+		if setErr := s.tokens.CacheSet(ctx, otpKey, code, otpTTL); setErr != nil {
+			log.Printf("otp: deeplink: cache set failed: %v", setErr)
+			return nil, nil
+		}
+		if sendErr := s.resolveAndSendOTP(ctx, user, code, platform); sendErr != nil {
+			log.Printf("otp: deeplink: send failed: %v", sendErr)
+		}
+		return nil, nil
+	}
+
+	// No chat_id — return deep-link URL so the frontend can open the bot.
+	info := &OTPDeepLinkInfo{}
+	if s.baleBotUsername != "" {
+		info.BaleURL = "https://ble.ir/" + s.baleBotUsername + "?start=phone_" + normalized
+	}
+	if s.tgBotUsername != "" {
+		info.TgURL = "https://t.me/" + s.tgBotUsername + "?start=phone_" + normalized
+	}
+	return info, nil
+}
+
+// GetOTPDeliveryMethod returns the current system-level OTP delivery method.
+// Falls back to "contact_share" when the system settings repo is not configured.
+func (s *AuthService) GetOTPDeliveryMethod(ctx context.Context) string {
+	if s.sysSettings == nil {
+		return "contact_share"
+	}
+	m, err := s.sysSettings.GetOTPDeliveryMethod(ctx)
+	if err != nil {
+		return "contact_share"
+	}
+	return m
 }
 
 // sendRegContactOTP checks Redis for a registration contact stored by the bot
@@ -633,6 +726,144 @@ func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip s
 	}
 
 	return s.issueTokenPair(ctx, user.ID)
+}
+
+// ── phone + password login (TASK-0029 A1) ────────────────────────────────────
+
+// LoginWithPhone authenticates a phone user by password. Returns the same error
+// for "not found" and "wrong password" to prevent enumeration.
+// Returns ErrNoPasswordSet (400) when the account has never set a password.
+func (s *AuthService) LoginWithPhone(ctx context.Context, phone, password, ip string) (accessToken, refreshToken string, err error) {
+	allowed, err := s.tokens.CheckRateLimit(ctx, "ratelimit:login:"+ip, loginRateMax, loginRateWindow)
+	if err != nil {
+		return "", "", fmt.Errorf("rate limit: %w", err)
+	}
+	if !allowed {
+		return "", "", ErrRateLimitExceeded
+	}
+
+	normalized, normErr := normalizePhone(phone)
+	if normErr != nil {
+		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
+		return "", "", ErrInvalidCredentials
+	}
+
+	user, lookupErr := s.users.FindByPhone(ctx, normalized)
+	if lookupErr != nil {
+		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
+		return "", "", ErrInvalidCredentials
+	}
+
+	if user.PasswordHash == "" {
+		return "", "", ErrNoPasswordSet
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return "", "", ErrInvalidCredentials
+	}
+
+	return s.issueTokenPair(ctx, user.ID)
+}
+
+// ── optional password setup (TASK-0029 A3) ───────────────────────────────────
+
+// SetPassword hashes and stores a new password for the given user. Idempotent
+// (a second call replaces the existing hash). No current-password check because
+// first-time set is always from a passwordless phone account.
+func (s *AuthService) SetPassword(ctx context.Context, userID uuid.UUID, password string) error {
+	if len(password) < 8 {
+		return ErrPasswordTooShort
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	return s.users.SetPasswordHash(ctx, userID, string(hash))
+}
+
+// ── deep-link OTP handler (TASK-0029 B5) ─────────────────────────────────────
+
+// HandleDeepLinkOTP is called by the bot Poller when it receives
+// "/start phone_<E164>" in deeplink mode. It generates and sends an OTP
+// directly to the chatID that sent the message.
+//
+// If a valid OTP already exists in Redis for this phone+platform, no new code
+// is generated (dedup).
+//
+// For an unregistered phone, a registration OTP is stored and
+// StoreRegistrationContact is called so CompleteOTPRegister can link the chat.
+// For a registered phone, a login OTP is stored (and the chat_id is linked if
+// the user didn't have one yet).
+func (s *AuthService) HandleDeepLinkOTP(ctx context.Context, platform, chatID, rawPhone string) error {
+	normalized, err := normalizePhone(rawPhone)
+	if err != nil {
+		log.Printf("otp: deeplink: invalid phone %q: %v", rawPhone, err)
+		return nil
+	}
+
+	sender := s.senderForPlatform(Platform(platform))
+	if sender == nil {
+		log.Printf("otp: deeplink: no sender configured for platform %s", platform)
+		return nil
+	}
+
+	user, lookupErr := s.users.FindByPhone(ctx, normalized)
+	if lookupErr != nil {
+		// Unregistered phone — registration OTP flow.
+		regKey := "otp:reg:" + platform + ":" + normalized
+		if existing, ok, _ := s.tokens.CacheGet(ctx, regKey); ok && existing != "" {
+			return nil // already pending
+		}
+		// Store chatID as a registration contact for CompleteOTPRegister.
+		if storeErr := s.StoreRegistrationContact(ctx, platform, chatID, normalized); storeErr != nil {
+			log.Printf("otp: deeplink: store reg contact: %v", storeErr)
+		}
+		code, genErr := generateOTPCode()
+		if genErr != nil {
+			return fmt.Errorf("generate otp: %w", genErr)
+		}
+		if setErr := s.tokens.CacheSet(ctx, regKey, code, otpTTL); setErr != nil {
+			return fmt.Errorf("cache set: %w", setErr)
+		}
+		if sendErr := sender.Send(ctx, chatID, code); sendErr != nil {
+			log.Printf("otp: deeplink: send failed: %v", sendErr)
+		}
+		return nil
+	}
+
+	// Registered user — login OTP flow.
+	loginKey := "otp:login:" + platform + ":" + normalized
+	if existing, ok, _ := s.tokens.CacheGet(ctx, loginKey); ok && existing != "" {
+		return nil // already pending
+	}
+
+	// Link bot chat_id if the user doesn't have one yet.
+	switch Platform(platform) {
+	case PlatformTelegram:
+		if user.TelegramChatID == nil {
+			if linkErr := s.users.UpdateBotLink(ctx, user.ID, normalized, nil, &chatID); linkErr != nil {
+				log.Printf("otp: deeplink: update bot link: %v", linkErr)
+			}
+		}
+	default:
+		if user.BaleChatID == nil {
+			if linkErr := s.users.UpdateBotLink(ctx, user.ID, normalized, &chatID, nil); linkErr != nil {
+				log.Printf("otp: deeplink: update bot link: %v", linkErr)
+			}
+		}
+	}
+
+	code, genErr := generateOTPCode()
+	if genErr != nil {
+		return fmt.Errorf("generate otp: %w", genErr)
+	}
+	if setErr := s.tokens.CacheSet(ctx, loginKey, code, otpTTL); setErr != nil {
+		return fmt.Errorf("cache set: %w", setErr)
+	}
+	if sendErr := sender.Send(ctx, chatID, code); sendErr != nil {
+		log.Printf("otp: deeplink: send failed: %v", sendErr)
+	}
+	return nil
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────

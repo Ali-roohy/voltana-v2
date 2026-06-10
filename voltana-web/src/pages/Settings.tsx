@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, Zap, Link2, CheckCircle2, Palette } from "lucide-react";
 import { AdminOTPPanel } from "@/features/settings/AdminOTPPanel";
+import { AdminSystemSettings } from "@/features/settings/AdminSystemSettings";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
 import { useMe } from "@/features/auth/hooks";
 import { useBotLink } from "@/features/account/hooks";
@@ -395,6 +396,9 @@ export default function Settings() {
 
           {/* Admin OTP test panel — visible only to admins */}
           {me?.is_admin && <AdminOTPPanel me={me} />}
+
+          {/* Admin system settings — OTP delivery method */}
+          {me?.is_admin && <AdminSystemSettings />}
         </div>
       </main>
     </div>

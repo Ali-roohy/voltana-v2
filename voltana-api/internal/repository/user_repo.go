@@ -30,6 +30,8 @@ type UserRepository interface {
 	// UpdateBotLink writes the E.164 phone plus whichever chat_id is non-nil,
 	// leaving the other chat_id column untouched (COALESCE semantics).
 	UpdateBotLink(ctx context.Context, userID uuid.UUID, phone string, baleChatID, telegramChatID *string) error
+	// SetPasswordHash stores a bcrypt hash for the given user (idempotent).
+	SetPasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 
 	// Admin user management
 	ListAll(ctx context.Context, limit, offset int) ([]*domain.User, int, error)
@@ -191,6 +193,20 @@ func (r *pgxUserRepository) CountAdmins(ctx context.Context) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE is_admin = true`).Scan(&n)
 	return n, err
+}
+
+func (r *pgxUserRepository) SetPasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`,
+		id, hash,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func scanUser(row pgx.Row) (*domain.User, error) {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -47,4 +48,30 @@ func (h *AccountHandler) BotLink(c *gin.Context) {
 		resp["telegram_url"] = telegramURL
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+type setPasswordReq struct {
+	Password string `json:"password" binding:"required"`
+}
+
+// SetPassword handles POST /v1/account/set-password.
+// Sets or replaces a bcrypt password for the authenticated user.
+func (h *AccountHandler) SetPassword(c *gin.Context) {
+	var req setPasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password required"})
+		return
+	}
+
+	userID := c.MustGet(middleware.UserIDKey).(uuid.UUID)
+	if err := h.auth.SetPassword(c.Request.Context(), userID, req.Password); err != nil {
+		if errors.Is(err, service.ErrPasswordTooShort) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		log.Printf("set-password: userID=%s: %v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set password"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

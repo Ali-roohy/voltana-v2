@@ -23,6 +23,9 @@ type LinkCallback interface {
 	// StoreRegistrationContact stores a phone→chatID mapping when a user shares
 	// their phone after a bare /start (B5, TASK-0026).
 	StoreRegistrationContact(ctx context.Context, platform, chatID, phone string) error
+	// HandleDeepLinkOTP is called when the bot receives "/start phone_<E164>".
+	// It generates and sends an OTP directly to chatID (TASK-0029 B5).
+	HandleDeepLinkOTP(ctx context.Context, platform, chatID, rawPhone string) error
 }
 
 // Poller runs a getUpdates long-poll loop for one bot platform (Bale or
@@ -105,12 +108,23 @@ func (p *Poller) handleUpdate(ctx context.Context, u update) {
 	msg := u.Message
 	chatIDStr := fmt.Sprintf("%d", msg.Chat.ID)
 
-	// "/start <link-token>" — user tapped a deep link from Settings.
+	// "/start <param>" — link-token or deep-link OTP phone.
 	if strings.HasPrefix(msg.Text, "/start ") {
 		token := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/start "))
 		if token == "" {
 			return
 		}
+
+		// "/start phone_<E164>" — deep-link OTP flow (TASK-0029 B5).
+		if strings.HasPrefix(token, "phone_") {
+			rawPhone := strings.TrimPrefix(token, "phone_")
+			if err := p.cb.HandleDeepLinkOTP(ctx, p.platform, chatIDStr, rawPhone); err != nil {
+				log.Printf("bot: %s /start phone: HandleDeepLinkOTP: %v", p.platform, err)
+			}
+			return
+		}
+
+		// "/start <link-token>" — account-link flow.
 		userID, found, err := p.cb.ConsumeBotLinkToken(ctx, token)
 		if err != nil || !found {
 			if err != nil {

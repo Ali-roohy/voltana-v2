@@ -24,10 +24,11 @@ const (
 type AuthHandler struct {
 	auth   *service.AuthService
 	isProd bool
+	sysSet *service.SystemSettingsService // for GET /auth/otp/config (may be nil)
 }
 
-func NewAuthHandler(auth *service.AuthService, isProd bool) *AuthHandler {
-	return &AuthHandler{auth: auth, isProd: isProd}
+func NewAuthHandler(auth *service.AuthService, isProd bool, sysSet *service.SystemSettingsService) *AuthHandler {
+	return &AuthHandler{auth: auth, isProd: isProd, sysSet: sysSet}
 }
 
 // ── request / response types ─────────────────────────────────────────────────
@@ -38,8 +39,15 @@ type registerRequest struct {
 }
 
 type loginRequest struct {
-	Email    string `json:"email"    binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email        string `json:"email"          binding:"required,email"`
+	Password     string `json:"password"       binding:"required"`
+	StayLoggedIn bool   `json:"stay_logged_in"`
+}
+
+type loginPhoneRequest struct {
+	Phone        string `json:"phone"          binding:"required"`
+	Password     string `json:"password"       binding:"required"`
+	StayLoggedIn bool   `json:"stay_logged_in"`
 }
 
 type verifyEmailRequest struct {
@@ -60,9 +68,10 @@ type otpRequestBody struct {
 }
 
 type otpVerifyBody struct {
-	Phone    string `json:"phone"    binding:"required"`
-	Code     string `json:"code"     binding:"required,len=6"`
-	Platform string `json:"platform"` // "bale" | "telegram"; must match the request
+	Phone        string `json:"phone"          binding:"required"`
+	Code         string `json:"code"           binding:"required,len=6"`
+	Platform     string `json:"platform"`       // "bale" | "telegram"; must match the request
+	StayLoggedIn bool   `json:"stay_logged_in"`
 }
 
 type otpRegisterBody struct {
@@ -126,7 +135,36 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, refresh)
+	h.setRefreshCookie(c, refresh, req.StayLoggedIn)
+	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
+}
+
+// LoginPhone godoc
+// POST /auth/login/phone
+func (h *AuthHandler) LoginPhone(c *gin.Context) {
+	var req loginPhoneRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	access, refresh, err := h.auth.LoginWithPhone(c.Request.Context(), req.Phone, req.Password, c.ClientIP())
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrNoPasswordSet):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "NO_PASSWORD_SET"})
+		case errors.Is(err, service.ErrInvalidCredentials):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials", "code": "INVALID_CREDENTIALS"})
+		case errors.Is(err, service.ErrRateLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
+		default:
+			log.Printf("login/phone: unexpected error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
+		}
+		return
+	}
+
+	h.setRefreshCookie(c, refresh, req.StayLoggedIn)
 	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
 }
 
@@ -199,7 +237,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, newRefresh)
+	h.setRefreshCookie(c, newRefresh, false)
 	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
 }
 
@@ -232,18 +270,21 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":               user.ID,
-		"email":            user.Email,
-		"is_admin":         user.IsAdmin,
-		"phone":            user.Phone,
-		"bale_linked":      user.BaleChatID != nil,
-		"telegram_linked":  user.TelegramChatID != nil,
+		"id":              user.ID,
+		"email":           user.Email,
+		"is_admin":        user.IsAdmin,
+		"phone":           user.Phone,
+		"bale_linked":     user.BaleChatID != nil,
+		"telegram_linked": user.TelegramChatID != nil,
+		"password_set":    len(user.PasswordHash) > 0,
 	})
 }
 
 // OTPRequest godoc
 // POST /auth/otp/request — sends a 6-digit OTP to the user's linked bot chat.
-// Always returns 202 regardless of whether the phone/chat exists (anti-enum).
+// In contact_share mode (default) always returns 202 (anti-enum).
+// In deeplink mode, returns 200 + bale_url/telegram_url when the user has no
+// existing chat_id so the frontend can open the bot via a deep link.
 func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	var req otpRequestBody
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -253,7 +294,8 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	}
 
 	platform := normalizePlatform(req.Platform)
-	if err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP(), platform); err != nil {
+	deepLink, err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP(), platform)
+	if err != nil {
 		if errors.Is(err, service.ErrRateLimitExceeded) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
 			return
@@ -263,7 +305,35 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 		return
 	}
 
+	if deepLink != nil {
+		resp := gin.H{"status": "deep_link"}
+		if deepLink.BaleURL != "" {
+			resp["bale_url"] = deepLink.BaleURL
+		} else {
+			resp["bale_url"] = nil
+		}
+		if deepLink.TgURL != "" {
+			resp["telegram_url"] = deepLink.TgURL
+		} else {
+			resp["telegram_url"] = nil
+		}
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
 	c.JSON(http.StatusAccepted, gin.H{"message": "if the account is linked, an OTP has been sent"})
+}
+
+// OTPConfig godoc
+// GET /auth/otp/config — public endpoint to expose the current OTP delivery method.
+func (h *AuthHandler) OTPConfig(c *gin.Context) {
+	method := "contact_share"
+	if h.sysSet != nil {
+		if settings, err := h.sysSet.GetSettings(c.Request.Context()); err == nil {
+			method = settings.OTPDeliveryMethod
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"delivery_method": method})
 }
 
 // OTPVerify godoc
@@ -301,7 +371,7 @@ func (h *AuthHandler) OTPVerify(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, refresh)
+	h.setRefreshCookie(c, refresh, req.StayLoggedIn)
 	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
 }
 
@@ -343,7 +413,7 @@ func (h *AuthHandler) OTPRegister(c *gin.Context) {
 		return
 	}
 
-	h.setRefreshCookie(c, refresh)
+	h.setRefreshCookie(c, refresh, false)
 	c.JSON(http.StatusOK, tokenResponse{AccessToken: access})
 }
 
@@ -358,8 +428,14 @@ func normalizePlatform(p string) service.Platform {
 	return service.PlatformBale
 }
 
-func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string) {
-	maxAge := int((30 * 24 * time.Hour).Seconds())
+// setRefreshCookie writes the httpOnly refresh-token cookie.
+// stayLoggedIn=true → 30-day persistent cookie; false → session cookie (Max-Age=0).
+// The token's Redis TTL is always 30 days regardless of this flag.
+func (h *AuthHandler) setRefreshCookie(c *gin.Context, token string, stayLoggedIn bool) {
+	maxAge := 0
+	if stayLoggedIn {
+		maxAge = int((30 * 24 * time.Hour).Seconds())
+	}
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(refreshCookieName, token, maxAge, refreshCookiePath, "", h.isProd, true)
 }

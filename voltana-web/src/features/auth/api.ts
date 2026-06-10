@@ -15,6 +15,17 @@ export interface Me {
   phone: string | null;
   bale_linked: boolean;
   telegram_linked: boolean;
+  password_set: boolean;
+}
+
+export interface OTPRequestResult {
+  status?: "deep_link";
+  bale_url?: string | null;
+  telegram_url?: string | null;
+}
+
+export interface OTPConfig {
+  delivery_method: "deeplink" | "contact_share";
 }
 
 export const getMe = () => api.get<Me>("/v1/me");
@@ -23,10 +34,35 @@ export async function register(email: string, password: string): Promise<void> {
   await api.post("/auth/register", { email, password });
 }
 
-export async function login(email: string, password: string): Promise<void> {
-  const res = await api.post<TokenResponse>("/auth/login", { email, password });
+export async function login(email: string, password: string, stayLoggedIn = false): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/login", {
+    email,
+    password,
+    stay_logged_in: stayLoggedIn,
+  });
   authStore.setToken(res.access_token);
   authStore.setEmail(email);
+}
+
+export async function loginWithPhone(
+  phone: string,
+  password: string,
+  stayLoggedIn = false,
+): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/login/phone", {
+    phone,
+    password,
+    stay_logged_in: stayLoggedIn,
+  });
+  authStore.setToken(res.access_token);
+}
+
+export async function setPassword(password: string): Promise<void> {
+  await api.post("/v1/account/set-password", { password });
+}
+
+export async function getOTPConfig(): Promise<OTPConfig> {
+  return api.get<OTPConfig>("/auth/otp/config");
 }
 
 // Consume a verification token from the emailed link. Returns the API message
@@ -42,16 +78,30 @@ export async function resendVerification(email: string): Promise<void> {
   await api.post("/auth/resend-verification", { email });
 }
 
-// Request a 6-digit OTP sent to the user's linked Bale or Telegram bot chat.
-// Always resolves (server replies 202 regardless of whether the phone is linked).
-export async function requestOTP(phone: string, platform: "bale" | "telegram"): Promise<void> {
-  await api.post("/auth/otp/request", { phone, platform });
+// Request a 6-digit OTP. In contact_share mode, always resolves (202, anti-enum).
+// In deeplink mode, may return { status: "deep_link", bale_url, telegram_url } (200).
+export async function requestOTP(
+  phone: string,
+  platform: "bale" | "telegram",
+): Promise<OTPRequestResult> {
+  const res = await api.post<OTPRequestResult>("/auth/otp/request", { phone, platform });
+  return res ?? {};
 }
 
 // Verify a 6-digit OTP and log in. Sets the in-memory access token on success.
 // Throws ApiError with code "INVALID_OTP" (+ data.remaining_attempts) or "OTP_LOCKED".
-export async function verifyOTP(phone: string, code: string, platform: "bale" | "telegram"): Promise<void> {
-  const res = await api.post<TokenResponse>("/auth/otp/verify", { phone, code, platform });
+export async function verifyOTP(
+  phone: string,
+  code: string,
+  platform: "bale" | "telegram",
+  stayLoggedIn = false,
+): Promise<void> {
+  const res = await api.post<TokenResponse>("/auth/otp/verify", {
+    phone,
+    code,
+    platform,
+    stay_logged_in: stayLoggedIn,
+  });
   authStore.setToken(res.access_token);
 }
 

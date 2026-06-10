@@ -59,6 +59,7 @@ func main() {
 	settingsRepo := repository.NewSettingsRepository(db)
 	batteryRepo  := repository.NewBatteryRepository(db)
 	stationRepo  := repository.NewStationRepository(db)
+	sysSettingsRepo := repository.NewSystemSettingsRepository(db)
 
 	// ── Mailer ────────────────────────────────────────────────────────────────
 	var mail service.Mailer
@@ -98,6 +99,7 @@ func main() {
 	}
 
 	authSvc.SetBotSenders(baleSender, tgSender, baleUser, tgUser)
+	authSvc.SetSystemSettingsRepo(sysSettingsRepo)
 
 	// ── Long-poll workers ─────────────────────────────────────────────────────
 	// One poller per configured real bot token. Pollers run in-process goroutines
@@ -128,10 +130,11 @@ func main() {
 	chargingSvc.SetHealthRecomputer(analyticsSvc)
 
 	adminSvc   := service.NewAdminService(userRepo)
+	sysSetSvc  := service.NewSystemSettingsService(sysSettingsRepo)
 
-	authH      := handler.NewAuthHandler(authSvc, isProd)
+	authH      := handler.NewAuthHandler(authSvc, isProd, sysSetSvc)
 	accountH   := handler.NewAccountHandler(authSvc)
-	adminH     := handler.NewAdminHandler(authSvc, adminSvc)
+	adminH     := handler.NewAdminHandler(authSvc, adminSvc, sysSetSvc)
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
 	chargingH  := handler.NewChargingHandler(chargingSvc)
@@ -155,11 +158,13 @@ func main() {
 	{
 		auth.POST("/register",            authH.Register)
 		auth.POST("/login",               authH.Login)
+		auth.POST("/login/phone",         authH.LoginPhone)
 		auth.POST("/refresh",             authH.Refresh)
 		auth.POST("/logout",              authH.Logout)
 		auth.POST("/verify-email",        authH.VerifyEmail)
 		auth.POST("/resend-verification", authH.ResendVerification)
 		auth.POST("/otp/request",         authH.OTPRequest)
+		auth.GET ("/otp/config",          authH.OTPConfig)
 		auth.POST("/otp/verify",          authH.OTPVerify)
 		auth.POST("/otp/register",        authH.OTPRegister)
 	}
@@ -168,7 +173,8 @@ func main() {
 	{
 		v1.GET("/me", authH.Me)
 
-		v1.POST("/account/bot-link", accountH.BotLink)
+		v1.POST("/account/bot-link",      accountH.BotLink)
+		v1.POST("/account/set-password",  accountH.SetPassword)
 
 		v1.GET("/cars", carH.List)
 		v1.POST("/cars", carH.Create)
@@ -205,6 +211,9 @@ func main() {
 		v1.GET   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.GetUser)
 		v1.PUT   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.UpdateUser)
 		v1.DELETE("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.DeleteUser)
+
+		v1.GET("/admin/system-settings", middleware.AdminOnly(authSvc), adminH.GetSystemSettings)
+		v1.PUT("/admin/system-settings", middleware.AdminOnly(authSvc), adminH.UpdateSystemSettings)
 	}
 
 	// ── Start ─────────────────────────────────────────────────────────────────

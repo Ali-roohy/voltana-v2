@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { register, login, resendVerification, requestOTP, verifyOTP, registerWithOTP } from '@/features/auth/api';
+import {
+  register,
+  login,
+  loginWithPhone,
+  setPassword,
+  getOTPConfig,
+  resendVerification,
+  requestOTP,
+  verifyOTP,
+  registerWithOTP,
+} from '@/features/auth/api';
+import type { OTPConfig } from '@/features/auth/api';
 import { ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,14 +45,75 @@ type OTPError =
   | { type: 'phone_taken' }
   | null;
 
+// ── SetPasswordStep ────────────────────────────────────────────────────────────
+
+interface SetPasswordStepProps {
+  onSkip: () => void;
+  onDone: () => void;
+}
+
+function SetPasswordStep({ onSkip, onDone }: SetPasswordStepProps) {
+  const [password, setPasswordVal] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) {
+      toast.error('رمز عبور باید حداقل ۸ کاراکتر باشد');
+      return;
+    }
+    setLoading(true);
+    try {
+      await setPassword(password);
+      toast.success('رمز عبور تنظیم شد');
+      onDone();
+    } catch {
+      toast.error('خطا در تنظیم رمز عبور');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="text-center space-y-1">
+        <p className="text-sm font-medium">🔒 تنظیم رمز عبور (اختیاری)</p>
+        <p className="text-xs text-muted-foreground">
+          برای ورود بعدی می‌توانید رمز عبور تنظیم کنید
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="set-password-input">رمز عبور</Label>
+          <Input
+            id="set-password-input"
+            type="password"
+            placeholder="حداقل ۸ کاراکتر"
+            value={password}
+            onChange={(e) => setPasswordVal(e.target.value)}
+            dir="ltr"
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading || password.length < 8}>
+          {loading ? 'در حال ذخیره...' : 'تنظیم رمز'}
+        </Button>
+      </form>
+      <Button variant="ghost" className="w-full" onClick={onSkip}>
+        رد کردن
+      </Button>
+    </div>
+  );
+}
+
 // ── BotOTPTab ──────────────────────────────────────────────────────────────────
-// Shared component for both OTP login (mode="login") and OTP registration (mode="register").
 
 interface BotOTPTabProps {
   platform: 'bale' | 'telegram';
   mode: 'login' | 'register';
-  onBack?: () => void; // register mode: returns to method picker
+  onBack?: () => void;
 }
+
+type BotStep = 'phone' | 'login_method' | 'password' | 'otp' | 'set_password';
 
 function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   const navigate = useNavigate();
@@ -50,16 +122,21 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [passwordVal, setPasswordVal] = useState('');
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
+  const [step, setStep] = useState<BotStep>('phone');
   const [loading, setLoading] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
   const [cooldown, setCooldown] = useState(0);
   const [otpError, setOtpError] = useState<OTPError>(null);
+  const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
+  const [otpConfig, setOtpConfig] = useState<OTPConfig | null>(null);
 
   const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    getOTPConfig().then(setOtpConfig).catch(() => {});
     return () => {
       if (otpTimerRef.current) clearInterval(otpTimerRef.current);
       if (cooldownRef.current) clearInterval(cooldownRef.current);
@@ -87,15 +164,26 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   };
 
   const sendOTP = async (phoneVal: string) => {
-    // Connectivity reminder — fires before every OTP API call.
-    toast.warning("فیلترشکن رو روشن کن برای تلگرام، یا بله رو چک کن");
+    if (platform === 'telegram') {
+      toast.warning("فیلترشکن رو روشن کن برای تلگرام");
+    }
     setLoading(true);
     try {
-      await requestOTP(phoneVal, platform);
-      setStep('otp');
-      setCode('');
-      setOtpError(null);
-      startTimers();
+      const result = await requestOTP(phoneVal, platform);
+      if (result.status === 'deep_link') {
+        const url = platform === 'bale' ? result.bale_url : result.telegram_url;
+        setDeepLinkUrl(url ?? null);
+        setStep('otp');
+        setCode('');
+        setOtpError(null);
+        startTimers();
+      } else {
+        setDeepLinkUrl(null);
+        setStep('otp');
+        setCode('');
+        setOtpError(null);
+        startTimers();
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         toast.error('درخواست زیاد — لطفاً ۱۵ دقیقه دیگر امتحان کنید.');
@@ -107,15 +195,43 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     }
   };
 
-  const handleRequest = async (e: React.FormEvent) => {
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone.trim() || loading || cooldown > 0) return;
-    await sendOTP(phone.trim());
+    if (!phone.trim() || loading) return;
+    if (mode === 'login') {
+      setStep('login_method');
+    } else {
+      await sendOTP(phone.trim());
+    }
   };
 
   const handleResend = async () => {
     if (!phone.trim() || loading || cooldown > 0) return;
     await sendOTP(phone.trim());
+  };
+
+  const handleLoginWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordVal || loading) return;
+    setLoading(true);
+    try {
+      await loginWithPhone(phone.trim(), passwordVal, stayLoggedIn);
+      toast.success('ورود با موفقیت انجام شد!');
+      navigate('/');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400 && err.code === 'NO_PASSWORD_SET') {
+        toast.error('این حساب رمز عبور ندارد — از OTP استفاده کنید');
+        setStep('login_method');
+      } else if (err instanceof ApiError && err.status === 401) {
+        toast.error('رمز عبور اشتباه است');
+      } else if (err instanceof ApiError && err.status === 429) {
+        toast.error('تلاش‌های زیاد — کمی صبر کنید');
+      } else {
+        toast.error('خطایی رخ داده است');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const doVerify = useCallback(async (codeVal: string) => {
@@ -125,11 +241,12 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
       if (mode === 'register') {
         await registerWithOTP(phone.trim(), codeVal, platform, email.trim() || undefined);
         toast.success('ثبت نام با موفقیت انجام شد!');
+        setStep('set_password');
       } else {
-        await verifyOTP(phone.trim(), codeVal, platform);
+        await verifyOTP(phone.trim(), codeVal, platform, stayLoggedIn);
         toast.success('ورود با موفقیت انجام شد!');
+        navigate('/');
       }
-      navigate('/');
     } catch (err) {
       setCode('');
       if (err instanceof ApiError && err.status === 409 && err.code === 'PHONE_TAKEN') {
@@ -150,106 +267,216 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, otpTimer, phone, email, mode, platform]);
+  }, [loading, otpTimer, phone, email, mode, platform, stayLoggedIn]);
 
   const isExpired = step === 'otp' && otpTimer === 0;
   const isLocked = otpError?.type === 'locked';
   const isPhoneTaken = otpError?.type === 'phone_taken';
 
   const helperText = mode === 'register'
-    ? `ابتدا ربات ولتانا را در ${platformLabel} استارت کنید و شماره خود را با ربات به اشتراک بگذارید.`
-    : `ابتدا باید در تنظیمات حساب کاربری، شماره تلفن خود را به ${platformLabel} متصل کنید.`;
+    ? otpConfig?.delivery_method === 'deeplink'
+      ? `روی دکمه زیر بزنید تا در ${platformLabel} کد دریافت کنید.`
+      : `ابتدا ربات ولتانا را در ${platformLabel} استارت کنید و شماره خود را به اشتراک بگذارید.`
+    : otpConfig?.delivery_method === 'deeplink'
+      ? `برای دریافت کد، دکمه زیر را لمس کنید تا به ${platformLabel} برید.`
+      : `ابتدا باید در تنظیمات حساب کاربری، شماره تلفن خود را به ${platformLabel} متصل کنید.`;
 
-  return (
-    <div className="space-y-4 pt-2">
-      {step === 'phone' ? (
-        <form onSubmit={handleRequest} className="space-y-4">
+  // ── set_password step ─────────────────────────────────────────────────────────
+  if (step === 'set_password') {
+    return (
+      <SetPasswordStep
+        onSkip={() => navigate('/')}
+        onDone={() => navigate('/')}
+      />
+    );
+  }
+
+  // ── phone step ────────────────────────────────────────────────────────────────
+  if (step === 'phone') {
+    return (
+      <form onSubmit={handlePhoneSubmit} className="space-y-4 pt-2">
+        <div className="space-y-2">
+          <Label htmlFor={`${platform}-${mode}-phone`}>شماره تلفن</Label>
+          <Input
+            id={`${platform}-${mode}-phone`}
+            type="tel"
+            placeholder="۰۹۱۲ ۳۴۵ ۶۷۸۹"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+            dir="ltr"
+          />
+          <p className="text-xs text-muted-foreground">{helperText}</p>
+        </div>
+        {mode === 'register' && (
           <div className="space-y-2">
-            <Label htmlFor={`${platform}-${mode}-phone`}>شماره تلفن</Label>
+            <Label htmlFor={`${platform}-reg-email`}>ایمیل (اختیاری)</Label>
             <Input
-              id={`${platform}-${mode}-phone`}
-              type="tel"
-              placeholder="۰۹۱۲ ۳۴۵ ۶۷۸۹"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
+              id={`${platform}-reg-email`}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               dir="ltr"
             />
-            <p className="text-xs text-muted-foreground">{helperText}</p>
           </div>
-          {mode === 'register' && (
-            <div className="space-y-2">
-              <Label htmlFor={`${platform}-reg-email`}>ایمیل (اختیاری)</Label>
-              <Input
-                id={`${platform}-reg-email`}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                dir="ltr"
-              />
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={loading || cooldown > 0}>
-            {loading ? 'در حال ارسال...' : cooldown > 0 ? `ارسال مجدد (${cooldown}ث)` : 'ارسال کد'}
+        )}
+        <Button type="submit" className="w-full" disabled={loading || !phone.trim()}>
+          {loading ? 'در حال بررسی...' : mode === 'login' ? 'ادامه' : 'ارسال کد'}
+        </Button>
+        {mode === 'register' && onBack && (
+          <Button type="button" variant="ghost" className="w-full" onClick={onBack}>
+            بازگشت
           </Button>
-          {mode === 'register' && onBack && (
-            <Button type="button" variant="ghost" className="w-full" onClick={onBack}>
-              بازگشت
-            </Button>
-          )}
-        </form>
-      ) : (
-        <div className="space-y-4">
-          <p className="text-sm text-center text-muted-foreground">
-            کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
-          </p>
+        )}
+      </form>
+    );
+  }
 
-          <OTPInput6
-            value={code}
-            onChange={(val) => { setCode(val); setOtpError(null); }}
-            onComplete={doVerify}
-            loading={loading}
-            disabled={isExpired || isLocked || isPhoneTaken}
-          />
-
-          {!isExpired && !isLocked && !isPhoneTaken && !loading && (
-            <p className="text-xs text-center text-muted-foreground">
-              کد تا {otpTimer} ثانیه دیگر معتبر است
-            </p>
-          )}
-
-          {isLocked && (
-            <p className="text-sm text-center text-destructive font-medium">
-              حساب قفل شده — ۱۵ دقیقه دیگر تلاش کنید.
-            </p>
-          )}
-          {isExpired && !isLocked && (
-            <p className="text-sm text-center text-destructive font-medium">
-              کد منقضی شد — دوباره ارسال کنید
-            </p>
-          )}
-          {otpError?.type === 'invalid' && !isExpired && (
-            <p className="text-sm text-center text-destructive">
-              کد اشتباه است — {otpError.remaining} تلاش باقی مانده
-            </p>
-          )}
-          {isPhoneTaken && (
-            <p className="text-sm text-center text-destructive">
-              این شماره قبلاً ثبت شده است — وارد شوید
-            </p>
-          )}
-
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full"
-            disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
-            onClick={handleResend}
-          >
-            {cooldown > 0 && !isExpired ? `ارسال مجدد (${cooldown}ث)` : 'ارسال مجدد'}
+  // ── login_method step (login mode only) ───────────────────────────────────────
+  if (step === 'login_method') {
+    return (
+      <div className="space-y-4 pt-2">
+        <p className="text-sm text-center text-muted-foreground">
+          📱 {phone.trim()}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" className="w-full" onClick={() => setStep('password')}>
+            ورود با رمز عبور
+          </Button>
+          <Button className="w-full" onClick={async () => { await sendOTP(phone.trim()); }}>
+            {loading ? 'در حال ارسال...' : 'ورود با OTP'}
           </Button>
         </div>
+        <Button variant="ghost" className="w-full text-xs" onClick={() => setStep('phone')}>
+          ← تغییر شماره
+        </Button>
+      </div>
+    );
+  }
+
+  // ── password step (login mode, password option) ───────────────────────────────
+  if (step === 'password') {
+    return (
+      <form onSubmit={handleLoginWithPassword} className="space-y-4 pt-2">
+        <p className="text-sm text-center text-muted-foreground">
+          📱 {phone.trim()}
+        </p>
+        <div className="space-y-2">
+          <Label htmlFor="phone-password-input">رمز عبور</Label>
+          <Input
+            id="phone-password-input"
+            type="password"
+            value={passwordVal}
+            onChange={(e) => setPasswordVal(e.target.value)}
+            required
+            dir="ltr"
+            autoFocus
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="phone-stay-login"
+            type="checkbox"
+            checked={stayLoggedIn}
+            onChange={(e) => setStayLoggedIn(e.target.checked)}
+            className="rounded"
+          />
+          <Label htmlFor="phone-stay-login" className="text-xs font-normal cursor-pointer">
+            ۳۰ روز در این مرورگر بمان
+          </Label>
+        </div>
+        <Button type="submit" className="w-full" disabled={loading || !passwordVal}>
+          {loading ? 'در حال ورود...' : 'ورود'}
+        </Button>
+        <Button type="button" variant="ghost" className="w-full" onClick={() => setStep('login_method')}>
+          ← بازگشت
+        </Button>
+      </form>
+    );
+  }
+
+  // ── otp step ──────────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4 pt-2">
+      {deepLinkUrl ? (
+        <div className="space-y-3">
+          <p className="text-sm text-center text-muted-foreground">
+            روی دکمه زیر بزنید تا در {platformLabel} کد دریافت کنید:
+          </p>
+          <a href={deepLinkUrl} target="_blank" rel="noopener noreferrer" className="block">
+            <Button type="button" variant="outline" className="w-full gap-2">
+              📲 باز کردن {platformLabel} برای دریافت کد
+            </Button>
+          </a>
+          <p className="text-xs text-center text-muted-foreground">
+            بعد از دریافت کد در {platformLabel}، اینجا وارد کنید:
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-center text-muted-foreground">
+          کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
+        </p>
       )}
+
+      <OTPInput6
+        value={code}
+        onChange={(val) => { setCode(val); setOtpError(null); }}
+        onComplete={doVerify}
+        loading={loading}
+        disabled={isExpired || isLocked || isPhoneTaken}
+      />
+
+      {mode === 'login' && !isExpired && !isLocked && !isPhoneTaken && (
+        <div className="flex items-center gap-2">
+          <input
+            id="otp-stay-login"
+            type="checkbox"
+            checked={stayLoggedIn}
+            onChange={(e) => setStayLoggedIn(e.target.checked)}
+            className="rounded"
+          />
+          <Label htmlFor="otp-stay-login" className="text-xs font-normal cursor-pointer">
+            ۳۰ روز در این مرورگر بمان
+          </Label>
+        </div>
+      )}
+
+      {!isExpired && !isLocked && !isPhoneTaken && !loading && (
+        <p className="text-xs text-center text-muted-foreground">
+          کد تا {otpTimer} ثانیه دیگر معتبر است
+        </p>
+      )}
+
+      {isLocked && (
+        <p className="text-sm text-center text-destructive font-medium">
+          حساب قفل شده — ۱۵ دقیقه دیگر تلاش کنید.
+        </p>
+      )}
+      {isExpired && !isLocked && (
+        <p className="text-sm text-center text-destructive font-medium">
+          کد منقضی شد — دوباره ارسال کنید
+        </p>
+      )}
+      {otpError?.type === 'invalid' && !isExpired && (
+        <p className="text-sm text-center text-destructive">
+          کد اشتباه است — {otpError.remaining} تلاش باقی مانده
+        </p>
+      )}
+      {isPhoneTaken && (
+        <p className="text-sm text-center text-destructive">
+          این شماره قبلاً ثبت شده است — وارد شوید
+        </p>
+      )}
+
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full"
+        disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
+        onClick={handleResend}
+      >
+        {cooldown > 0 && !isExpired ? `ارسال مجدد (${cooldown}ث)` : 'ارسال مجدد'}
+      </Button>
     </div>
   );
 }
@@ -398,6 +625,7 @@ export default function Auth() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
@@ -406,7 +634,7 @@ export default function Auth() {
     setLoading(true);
     try {
       const validated = loginSchema.parse(loginData);
-      await login(validated.email, validated.password);
+      await login(validated.email, validated.password, stayLoggedIn);
       toast.success('ورود با موفقیت انجام شد!');
       navigate('/');
     } catch (error) {
@@ -501,7 +729,6 @@ export default function Auth() {
                 </div>
 
                 {mode === 'login' ? (
-                  // ── Login: three-tab (ایمیل | بله | تلگرام) ──────────────────
                   <Tabs key="login" defaultValue="email" dir="rtl">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="email">ایمیل</TabsTrigger>
@@ -533,6 +760,18 @@ export default function Auth() {
                             dir="ltr"
                           />
                         </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="email-stay-login"
+                            type="checkbox"
+                            checked={stayLoggedIn}
+                            onChange={(e) => setStayLoggedIn(e.target.checked)}
+                            className="rounded"
+                          />
+                          <Label htmlFor="email-stay-login" className="text-xs font-normal cursor-pointer">
+                            ۳۰ روز در این مرورگر بمان
+                          </Label>
+                        </div>
                         <Button type="submit" className="w-full" disabled={loading}>
                           {loading ? 'در حال ورود...' : t('auth.login')}
                         </Button>
@@ -548,7 +787,6 @@ export default function Auth() {
                     </TabsContent>
                   </Tabs>
                 ) : (
-                  // ── Register: method picker → step 2 ─────────────────────────
                   <RegisterFlow key="register" onPendingEmail={setPendingEmail} />
                 )}
               </>

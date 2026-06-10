@@ -148,6 +148,15 @@ func (m *mockUserRepo) CountAdmins(_ context.Context) (int, error) {
 	return n, nil
 }
 
+func (m *mockUserRepo) SetPasswordHash(_ context.Context, id uuid.UUID, hash string) error {
+	u, ok := m.byID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.PasswordHash = hash
+	return nil
+}
+
 func (m *mockUserRepo) markVerified(email string) {
 	if u, ok := m.byEmail[email]; ok {
 		u.IsEmailVerified = true
@@ -665,8 +674,8 @@ func newTestServiceWithBale() (*service.AuthService, *mockUserRepo, *mockTokenSt
 func TestRequestOTP_UnknownPhone_NoError(t *testing.T) {
 	svc, _, _, sender := newTestServiceWithBale()
 
-	// Anti-enumeration: unknown phone must not error and must not send.
-	err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale)
+	// Anti-enumeration: unknown phone must not error and must not send (contact_share mode).
+	_, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale)
 	if err != nil {
 		t.Fatalf("want nil for unknown phone, got %v", err)
 	}
@@ -680,7 +689,7 @@ func TestRequestOTP_LinkedUser_SendsOTP(t *testing.T) {
 	mustRegister(t, svc, "otp@example.com", "password")
 	users.linkBot("otp@example.com", "+989121234567")
 
-	if err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale); err != nil {
+	if _, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale); err != nil {
 		t.Fatalf("RequestOTP: %v", err)
 	}
 	if len(sender.sent) != 1 {
@@ -698,12 +707,12 @@ func TestRequestOTP_RateLimited(t *testing.T) {
 
 	// 3 requests are allowed.
 	for i := 0; i < 3; i++ {
-		if err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale); err != nil {
+		if _, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale); err != nil {
 			t.Fatalf("request %d: %v", i+1, err)
 		}
 	}
 	// 4th must be rejected.
-	err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale)
+	_, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale)
 	if !errors.Is(err, service.ErrRateLimitExceeded) {
 		t.Errorf("want ErrRateLimitExceeded on 4th request, got %v", err)
 	}
@@ -806,7 +815,7 @@ func TestRequestOTP_RegContactSendsOTP(t *testing.T) {
 	// Phone not in users but a reg:contact was stored by bot cold-start.
 	store.cache["reg:contact:bale:+989121234567"] = "reg_chat_123"
 
-	if err := svc.RequestOTP(context.Background(), "+989121234567", "1.2.3.4", service.PlatformBale); err != nil {
+	if _, err := svc.RequestOTP(context.Background(), "+989121234567", "1.2.3.4", service.PlatformBale); err != nil {
 		t.Fatalf("RequestOTP: %v", err)
 	}
 	if len(sender.sent) != 1 {
@@ -883,6 +892,96 @@ func TestCompleteOTPRegister_NoBotContact(t *testing.T) {
 	// Anti-enum: same error as invalid OTP (no hint that bot contact is missing).
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid when no bot contact stored, got %v", err)
+	}
+}
+
+// ── LoginWithPhone + SetPassword (TASK-0029) ──────────────────────────────────
+
+func TestLoginWithPhone_NoPasswordSet(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	// Create a phone-only user (password_hash == "").
+	phone := "+989131234567"
+	chatID := "chat_abc"
+	store.cache["otp:reg:bale:"+phone] = "111222"
+	store.cache["reg:contact:bale:"+phone] = chatID
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "111222", "1.2.3.4", service.PlatformBale, nil); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	_, _, err := svc.LoginWithPhone(context.Background(), phone, "anypassword", "1.2.3.4")
+	if !errors.Is(err, service.ErrNoPasswordSet) {
+		t.Errorf("want ErrNoPasswordSet, got %v", err)
+	}
+}
+
+func TestLoginWithPhone_WrongPassword(t *testing.T) {
+	svc, users, store, _ := newTestServiceWithBale()
+	phone := "+989132222222"
+	chatID := "chat_xyz"
+	store.cache["otp:reg:bale:"+phone] = "333444"
+	store.cache["reg:contact:bale:"+phone] = chatID
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "333444", "1.2.3.4", service.PlatformBale, nil); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// Set a password.
+	u := users.byPhone[phone]
+	if err := svc.SetPassword(context.Background(), u.ID, "correctpassword"); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+
+	_, _, err := svc.LoginWithPhone(context.Background(), phone, "wrongpassword", "1.2.3.4")
+	if !errors.Is(err, service.ErrInvalidCredentials) {
+		t.Errorf("want ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginWithPhone_Success(t *testing.T) {
+	svc, users, store, _ := newTestServiceWithBale()
+	phone := "+989133333333"
+	chatID := "chat_ok"
+	store.cache["otp:reg:bale:"+phone] = "555666"
+	store.cache["reg:contact:bale:"+phone] = chatID
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "555666", "1.2.3.4", service.PlatformBale, nil); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	u := users.byPhone[phone]
+	if err := svc.SetPassword(context.Background(), u.ID, "mypassword123"); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+
+	access, refresh, err := svc.LoginWithPhone(context.Background(), phone, "mypassword123", "1.2.3.4")
+	if err != nil {
+		t.Fatalf("LoginWithPhone: %v", err)
+	}
+	if access == "" || refresh == "" {
+		t.Error("want non-empty tokens on success")
+	}
+}
+
+func TestSetPassword_TooShort(t *testing.T) {
+	svc, _, _ := newTestService()
+	u := mustRegister(t, svc, "pw@example.com", "password123")
+
+	if err := svc.SetPassword(context.Background(), u.ID, "short"); err == nil {
+		t.Error("want error for password < 8 chars, got nil")
+	} else if !errors.Is(err, service.ErrPasswordTooShort) {
+		t.Errorf("want ErrPasswordTooShort, got %v", err)
+	}
+}
+
+func TestSetPassword_SetsHashCorrectly(t *testing.T) {
+	svc, users, _ := newTestService()
+	u := mustRegister(t, svc, "hashtest@example.com", "password123")
+
+	if err := svc.SetPassword(context.Background(), u.ID, "newpassword!"); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+	updated := users.byID[u.ID]
+	if updated.PasswordHash == "" {
+		t.Error("want non-empty password hash after SetPassword")
+	}
+	if updated.PasswordHash == "newpassword!" {
+		t.Error("password must be hashed, not stored in plain text")
 	}
 }
 

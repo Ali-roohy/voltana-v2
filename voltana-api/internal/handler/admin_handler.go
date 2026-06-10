@@ -18,12 +18,13 @@ import (
 
 // AdminHandler backs the /v1/admin/* routes (JWT + AdminOnly required).
 type AdminHandler struct {
-	auth  *service.AuthService
-	admin *service.AdminService
+	auth   *service.AuthService
+	admin  *service.AdminService
+	sysSet *service.SystemSettingsService
 }
 
-func NewAdminHandler(auth *service.AuthService, admin *service.AdminService) *AdminHandler {
-	return &AdminHandler{auth: auth, admin: admin}
+func NewAdminHandler(auth *service.AuthService, admin *service.AdminService, sysSet *service.SystemSettingsService) *AdminHandler {
+	return &AdminHandler{auth: auth, admin: admin, sysSet: sysSet}
 }
 
 type testOTPReq struct {
@@ -232,4 +233,45 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// ── system settings ──────────────────────────────────────────────────────────
+
+// GetSystemSettings handles GET /v1/admin/system-settings.
+func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
+	settings, err := h.sysSet.GetSettings(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"otp_delivery_method": settings.OTPDeliveryMethod})
+}
+
+type updateSystemSettingsReq struct {
+	OTPDeliveryMethod string `json:"otp_delivery_method" binding:"required"`
+}
+
+// UpdateSystemSettings handles PUT /v1/admin/system-settings.
+func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
+	var req updateSystemSettingsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "otp_delivery_method required"})
+		return
+	}
+
+	if err := h.sysSet.SetOTPDeliveryMethod(c.Request.Context(), req.OTPDeliveryMethod); err != nil {
+		if errors.Is(err, service.ErrInvalidOTPDeliveryMethod) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update settings"})
+		return
+	}
+
+	settings, err := h.sysSet.GetSettings(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings updated but failed to read back"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"otp_delivery_method": settings.OTPDeliveryMethod})
 }
