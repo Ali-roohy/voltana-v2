@@ -3,11 +3,18 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml <command>
 #
 # What this overlay changes:
+#   - postgres: bind-mount /var/lib/voltana/postgres (explicit host path, backup-friendly)
 #   - nginx: exposes port 443, mounts Let's Encrypt certs + certbot webroot
 #             + voltana-web/dist for React SPA static serving
 #   - mailhog: gated behind the "dev" profile (not started in production)
 
 services:
+  postgres:
+    volumes:
+      # Bind-mount replaces the named volume from docker-compose.yml in production.
+      # bootstrap-vps-prod.sh creates /var/lib/voltana/postgres with voltana:voltana ownership.
+      - /var/lib/voltana/postgres:/var/lib/postgresql/data
+
   nginx:
     ports:
       - "80:80"

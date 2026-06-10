@@ -1,0 +1,18 @@
+[Unit]
+Description=Voltana — daily database backup timer
+Documentation=https://github.com/Ali-roohy/voltana-v2/blob/main/docs/DEPLOY_PRODUCTION.md
+
+[Timer]
+# Fire daily at 03:00 UTC
+OnCalendar=*-*-* 03:00:00 UTC
+
+# Persistent=true means: if the timer was missed (e.g. VPS was down), fire
+# once on the next boot rather than waiting for the next scheduled window.
+Persistent=true
+
+# Add a random delay of up to 5 minutes to avoid thundering herd if many
+# services happen to share this time slot.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

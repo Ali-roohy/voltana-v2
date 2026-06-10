@@ -1,0 +1,24 @@
+[Unit]
+Description=Voltana — daily database backup
+Documentation=https://github.com/Ali-roohy/voltana-v2/blob/main/docs/DEPLOY_PRODUCTION.md
+After=docker.service voltana.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/voltana
+
+# Load production env so POSTGRES_USER, POSTGRES_DB, AWS_* vars are available
+EnvironmentFile=/opt/voltana/.env
+
+ExecStart=/bin/bash /opt/voltana/scripts/backup-db.sh
+
+# Run as the voltana user (must be in docker group)
+User=voltana
+Group=voltana
+
+# Redirect stdout/stderr to systemd journal
+StandardOutput=journal
+StandardError=journal
+
+# Mark the unit failed if the script exits non-zero — visible in systemctl status
