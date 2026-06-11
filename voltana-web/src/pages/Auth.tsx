@@ -133,6 +133,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
   const [otpConfig, setOtpConfig] = useState<OTPConfig | null>(null);
   const [awaitingContact, setAwaitingContact] = useState(false);
+  const [timerStarted, setTimerStarted] = useState(false);
 
   const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -148,6 +149,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   }, []);
 
   const startTimers = () => {
+    setTimerStarted(true);
     setOtpTimer(OTP_TTL_SECS);
     if (otpTimerRef.current) clearInterval(otpTimerRef.current);
     otpTimerRef.current = setInterval(() => {
@@ -167,7 +169,11 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     }, 1000);
   };
 
-  const startContactSharePolling = useCallback((phoneVal: string) => {
+  // startPolling is used by both awaiting_contact_share and deep_link modes.
+  // It polls /auth/otp/contact-status every 3 s; the backend now returns
+  // "otp_sent" for both flows (contact_share pending → dispatch, or deep_link
+  // active OTP key found). Timer starts only when the OTP is actually sent.
+  const startPolling = useCallback((phoneVal: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
@@ -180,7 +186,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           if (pollRef.current) clearInterval(pollRef.current);
           setAwaitingContact(false);
           setStep('phone');
-          toast.error('مهلت اشتراک مخاطب تمام شد — دوباره امتحان کنید');
+          toast.error('مهلت ارسال کد تمام شد — دوباره امتحان کنید');
         }
       } catch {
         // network error — keep polling
@@ -193,6 +199,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     if (platform === 'telegram') {
       toast.warning("فیلترشکن رو روشن کن برای تلگرام");
     }
+    setTimerStarted(false);
     setLoading(true);
     try {
       const result = await requestOTP(phoneVal, platform, mode);
@@ -206,7 +213,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         setStep('otp');
         setCode('');
         setOtpError(null);
-        startContactSharePolling(phoneVal);
+        startPolling(phoneVal);
       } else if (result.status === 'deep_link') {
         const url = platform === 'bale' ? result.bale_url : result.telegram_url;
         setDeepLinkUrl(url ?? null);
@@ -214,8 +221,11 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         setStep('otp');
         setCode('');
         setOtpError(null);
-        startTimers();
+        // DO NOT start timer here — OTP is sent by the bot only after the
+        // user taps the deep link. Poll until the backend confirms it's sent.
+        startPolling(phoneVal);
       } else {
+        // 202: OTP already sent (user has a linked chat_id). Start timer now.
         setDeepLinkUrl(null);
         setAwaitingContact(false);
         setStep('otp');
@@ -274,7 +284,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   };
 
   const doVerify = useCallback(async (codeVal: string) => {
-    if (codeVal.length !== 6 || loading || otpTimer === 0) return;
+    if (codeVal.length !== 6 || loading || (timerStarted && otpTimer === 0)) return;
     setLoading(true);
     try {
       if (mode === 'register') {
@@ -308,9 +318,12 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, otpTimer, phone, email, mode, platform, stayLoggedIn]);
+  }, [loading, timerStarted, otpTimer, phone, email, mode, platform, stayLoggedIn]);
 
-  const isExpired = step === 'otp' && otpTimer === 0;
+  // isExpired is only true AFTER the timer has started AND counted to zero.
+  // Before startTimers() is called (deep_link / contact_share waiting), it is
+  // always false so the OTP input stays enabled for early entry.
+  const isExpired = step === 'otp' && timerStarted && otpTimer === 0;
   const isLocked = otpError?.type === 'locked';
   const isPhoneTaken = otpError?.type === 'phone_taken';
 
@@ -494,6 +507,10 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     );
   }
 
+  // True while we have a deep link URL and are polling for the bot to send
+  // the OTP. Timer hasn't started yet.
+  const awaitingDeepLink = !!deepLinkUrl && !timerStarted;
+
   return (
     <div className="space-y-4 pt-2">
       {deepLinkUrl ? (
@@ -506,9 +523,16 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
               📲 باز کردن {platformLabel} برای دریافت کد
             </Button>
           </a>
-          <p className="text-xs text-center text-muted-foreground">
-            بعد از دریافت کد در {platformLabel}، اینجا وارد کنید:
-          </p>
+          {awaitingDeepLink ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+              <div className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <span>در انتظار ارسال کد از {platformLabel}...</span>
+            </div>
+          ) : (
+            <p className="text-xs text-center text-muted-foreground">
+              بعد از دریافت کد در {platformLabel}، اینجا وارد کنید:
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-center text-muted-foreground">
@@ -524,7 +548,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         disabled={isExpired || isLocked || isPhoneTaken}
       />
 
-      {mode === 'login' && !isExpired && !isLocked && !isPhoneTaken && (
+      {mode === 'login' && timerStarted && !isExpired && !isLocked && !isPhoneTaken && (
         <div className="flex items-center gap-2">
           <input
             id="otp-stay-login"
@@ -539,7 +563,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         </div>
       )}
 
-      {!isExpired && !isLocked && !isPhoneTaken && !loading && (
+      {timerStarted && !isExpired && !isLocked && !isPhoneTaken && !loading && (
         <p className="text-xs text-center text-muted-foreground">
           کد تا {otpTimer} ثانیه دیگر معتبر است
         </p>
@@ -570,7 +594,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         type="button"
         variant="ghost"
         className="w-full"
-        disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
+        disabled={loading || awaitingDeepLink || (cooldown > 0 && !isExpired) || isLocked}
         onClick={handleResend}
       >
         ارسال مجدد

@@ -588,12 +588,24 @@ func (s *AuthService) CheckContactShareStatus(ctx context.Context, phone string,
 	pendingKey := "otp:pending:reg:" + string(platform) + ":" + normalized
 	contactKey := "reg:contact:" + string(platform) + ":" + normalized
 
-	// Idempotency: already dispatched on a previous poll.
+	// Idempotency: already dispatched on a previous poll (contact_share path).
 	if _, sent, _ := s.tokens.CacheGet(ctx, sentKey); sent {
 		return "otp_sent", nil
 	}
 
-	// No pending OTP → session expired.
+	// Deep-link path: HandleDeepLinkOTP stores the active OTP directly under
+	// otp:reg: or otp:login: without going through the pending flow. Detect
+	// these so the frontend can start the 60 s timer as soon as the bot sends
+	// the code (instead of immediately when the deep-link URL is displayed).
+	for _, prefix := range []string{"otp:reg:", "otp:login:"} {
+		if _, ok, _ := s.tokens.CacheGet(ctx, prefix+string(platform)+":"+normalized); ok {
+			return "otp_sent", nil
+		}
+	}
+
+	// No pending OTP → session expired (contact_share flow only; deep_link
+	// sessions have no pendingKey so they fall into "expired" here once the
+	// active OTP has expired — that is the correct behaviour).
 	if _, hasPending, _ := s.tokens.CacheGet(ctx, pendingKey); !hasPending {
 		return "expired", nil
 	}
