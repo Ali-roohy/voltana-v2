@@ -353,7 +353,9 @@ func (h *AuthHandler) OTPContactStatus(c *gin.Context) {
 }
 
 // OTPConfig godoc
-// GET /auth/otp/config — public endpoint to expose the current OTP delivery method.
+// GET /auth/otp/config — public endpoint to expose the current OTP delivery method
+// and bot usernames (null when not configured). Always present so the frontend can
+// build deep links without conditional key checks.
 func (h *AuthHandler) OTPConfig(c *gin.Context) {
 	method := "contact_share"
 	if h.sysSet != nil {
@@ -361,15 +363,22 @@ func (h *AuthHandler) OTPConfig(c *gin.Context) {
 			method = settings.OTPDeliveryMethod
 		}
 	}
-	resp := gin.H{"delivery_method": method}
 	baleUser, tgUser := h.auth.GetBotUsernames()
-	if baleUser != "" {
-		resp["bale_username"] = baleUser
-	}
-	if tgUser != "" {
-		resp["tg_username"] = tgUser
+	resp := gin.H{
+		"delivery_method": method,
+		"bale_username":   nilStr(baleUser),
+		"tg_username":     nilStr(tgUser),
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// nilStr returns the string pointer value for JSON marshalling: nil when empty
+// (serialises as JSON null), pointer to value otherwise.
+func nilStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // OTPVerify godoc
