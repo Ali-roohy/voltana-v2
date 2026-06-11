@@ -223,7 +223,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         toast.error('این حساب رمز عبور ندارد — از OTP استفاده کنید');
         setStep('login_method');
       } else if (err instanceof ApiError && err.status === 401) {
-        toast.error('رمز عبور اشتباه است');
+        toast.error('رمز عبور اشتباه یا شماره در سیستم ثبت نشده');
       } else if (err instanceof ApiError && err.status === 429) {
         toast.error('تلاش‌های زیاد — کمی صبر کنید');
       } else {
@@ -475,7 +475,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
         onClick={handleResend}
       >
-        {cooldown > 0 && !isExpired ? `ارسال مجدد (${cooldown}ث)` : 'ارسال مجدد'}
+        {cooldown > 0 && !isExpired ? `ارسال مجدد ${cooldown}ث` : 'ارسال مجدد'}
       </Button>
     </div>
   );

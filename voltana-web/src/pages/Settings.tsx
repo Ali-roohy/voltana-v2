@@ -20,17 +20,17 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function Settings() {
-  const { language, setLanguage } = useLanguage();
+  const { language } = useLanguage();
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const isRTL = language === 'fa';
   const { themeId, setTheme } = useAppTheme();
   const { fontId, setFont } = useAppFont();
 
-  const [ratePeak, setRatePeak] = useState<string>('5000');
-  const [rateMid, setRateMid] = useState<string>('3000');
-  const [rateOffpeak, setRateOffpeak] = useState<string>('1500');
-  const [currency, setCurrency] = useState<'toman' | 'rial' | 'usd'>('toman');
+  const [ratePeak, setRatePeak] = useState<string>('2000');
+  const [rateMid, setRateMid] = useState<string>('1000');
+  const [rateOffpeak, setRateOffpeak] = useState<string>('500');
+  const currency = 'toman' as const;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,10 +46,9 @@ export default function Settings() {
 
   useEffect(() => {
     if (settings) {
-      setRatePeak(settings.peak_rate?.toString() || '5000');
-      setRateMid(settings.mid_rate?.toString() || '3000');
-      setRateOffpeak(settings.offpeak_rate?.toString() || '1500');
-      setCurrency(settings.currency ?? 'toman');
+      setRatePeak(settings.peak_rate?.toString() || '2000');
+      setRateMid(settings.mid_rate?.toString() || '1000');
+      setRateOffpeak(settings.offpeak_rate?.toString() || '500');
     }
   }, [settings]);
 
@@ -60,9 +59,9 @@ export default function Settings() {
     saveMutation.mutate(
       {
         default_car_id: settings?.default_car_id ?? null,
-        peak_rate: parseFloat(ratePeak) || 5000,
-        mid_rate: parseFloat(rateMid) || 3000,
-        offpeak_rate: parseFloat(rateOffpeak) || 1500,
+        peak_rate: parseFloat(ratePeak) || 2000,
+        mid_rate: parseFloat(rateMid) || 1000,
+        offpeak_rate: parseFloat(rateOffpeak) || 500,
         currency,
       },
       {
@@ -181,38 +180,16 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* Currency selector card */}
+          {/* Currency — fixed to Toman */}
           <Card>
             <CardHeader>
-              <CardTitle>{isRTL ? 'واحد ارزی' : 'Currency'}</CardTitle>
-              <CardDescription>
-                {isRTL
-                  ? 'واحد نمایش مبالغ را انتخاب کنید (ذخیره در حساب)'
-                  : 'Currency unit for cost display (saved to account)'}
-              </CardDescription>
+              <CardTitle>واحد ارزی</CardTitle>
+              <CardDescription>واحد نمایش مبالغ</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2">
-                {(['toman', 'rial', 'usd'] as const).map((c) => (
-                  <Button
-                    key={c}
-                    variant={currency === c ? 'default' : 'outline'}
-                    className="flex-1"
-                    onClick={() => {
-                      setCurrency(c);
-                      saveMutation.mutate({
-                        default_car_id: settings?.default_car_id ?? null,
-                        peak_rate: parseFloat(ratePeak) || 5000,
-                        mid_rate: parseFloat(rateMid) || 3000,
-                        offpeak_rate: parseFloat(rateOffpeak) || 1500,
-                        currency: c,
-                      });
-                    }}
-                  >
-                    {c === 'toman' ? 'تومان' : c === 'rial' ? 'ریال' : 'USD'}
-                  </Button>
-                ))}
-              </div>
+              <Button variant="default" className="w-full" disabled>
+                تومان
+              </Button>
             </CardContent>
           </Card>
 
@@ -377,18 +354,11 @@ export default function Settings() {
             <CardContent>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => setLanguage("fa")}
-                  variant={language === "fa" ? "default" : "outline"}
+                  variant="default"
                   className="flex-1"
+                  disabled
                 >
                   فارسی
-                </Button>
-                <Button
-                  onClick={() => setLanguage("en")}
-                  variant={language === "en" ? "default" : "outline"}
-                  className="flex-1"
-                >
-                  English
                 </Button>
               </div>
             </CardContent>
