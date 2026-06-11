@@ -163,10 +163,11 @@ func main() {
 		auth.POST("/logout",              authH.Logout)
 		auth.POST("/verify-email",        authH.VerifyEmail)
 		auth.POST("/resend-verification", authH.ResendVerification)
-		auth.POST("/otp/request",         authH.OTPRequest)
-		auth.GET ("/otp/config",          authH.OTPConfig)
-		auth.POST("/otp/verify",          authH.OTPVerify)
-		auth.POST("/otp/register",        authH.OTPRegister)
+		auth.POST("/otp/request",           authH.OTPRequest)
+		auth.GET ("/otp/config",            authH.OTPConfig)
+		auth.GET ("/otp/contact-status",    authH.OTPContactStatus)
+		auth.POST("/otp/verify",            authH.OTPVerify)
+		auth.POST("/otp/register",          authH.OTPRegister)
 	}
 
 	v1 := r.Group("/v1", middleware.Auth(authSvc))

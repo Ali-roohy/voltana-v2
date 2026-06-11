@@ -306,6 +306,10 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	}
 
 	if deepLink != nil {
+		if deepLink.AwaitingContact {
+			c.JSON(http.StatusOK, gin.H{"status": "awaiting_contact_share"})
+			return
+		}
 		resp := gin.H{"status": "deep_link"}
 		if deepLink.BaleURL != "" {
 			resp["bale_url"] = deepLink.BaleURL
@@ -322,6 +326,24 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "if the account is linked, an OTP has been sent"})
+}
+
+// OTPContactStatus polls whether the user has shared their bot contact.
+// GET /auth/otp/contact-status?phone=09121234567&platform=bale
+func (h *AuthHandler) OTPContactStatus(c *gin.Context) {
+	phone := c.Query("phone")
+	platform := normalizePlatform(c.Query("platform"))
+	if phone == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone required"})
+		return
+	}
+	status, err := h.auth.CheckContactShareStatus(c.Request.Context(), phone, platform)
+	if err != nil {
+		log.Printf("otp/contact-status: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "status check failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": status})
 }
 
 // OTPConfig godoc

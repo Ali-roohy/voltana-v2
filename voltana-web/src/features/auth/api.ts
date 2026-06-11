@@ -19,9 +19,13 @@ export interface Me {
 }
 
 export interface OTPRequestResult {
-  status?: "deep_link";
+  status?: "deep_link" | "awaiting_contact_share";
   bale_url?: string | null;
   telegram_url?: string | null;
+}
+
+export interface OTPContactStatusResult {
+  status: "awaiting_contact_share" | "otp_sent" | "expired";
 }
 
 export interface OTPConfig {
@@ -65,6 +69,14 @@ export async function setPassword(password: string): Promise<void> {
 
 export async function getOTPConfig(): Promise<OTPConfig> {
   return api.get<OTPConfig>("/auth/otp/config");
+}
+
+export async function getOTPContactStatus(
+  phone: string,
+  platform: string,
+): Promise<OTPContactStatusResult> {
+  const params = new URLSearchParams({ phone, platform });
+  return api.get<OTPContactStatusResult>(`/auth/otp/contact-status?${params}`);
 }
 
 // Consume a verification token from the emailed link. Returns the API message

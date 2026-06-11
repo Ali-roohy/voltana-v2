@@ -6,6 +6,7 @@ import {
   loginWithPhone,
   setPassword,
   getOTPConfig,
+  getOTPContactStatus,
   resendVerification,
   requestOTP,
   verifyOTP,
@@ -131,15 +132,18 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   const [otpError, setOtpError] = useState<OTPError>(null);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
   const [otpConfig, setOtpConfig] = useState<OTPConfig | null>(null);
+  const [awaitingContact, setAwaitingContact] = useState(false);
 
   const otpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     getOTPConfig().then(setOtpConfig).catch(() => {});
     return () => {
       if (otpTimerRef.current) clearInterval(otpTimerRef.current);
       if (cooldownRef.current) clearInterval(cooldownRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
@@ -163,6 +167,28 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     }, 1000);
   };
 
+  const startContactSharePolling = useCallback((phoneVal: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await getOTPContactStatus(phoneVal, platform);
+        if (res.status === 'otp_sent') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setAwaitingContact(false);
+          startTimers();
+        } else if (res.status === 'expired') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setAwaitingContact(false);
+          setStep('phone');
+          toast.error('مهلت اشتراک مخاطب تمام شد — دوباره امتحان کنید');
+        }
+      } catch {
+        // network error — keep polling
+      }
+    }, 3000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform]);
+
   const sendOTP = async (phoneVal: string) => {
     if (platform === 'telegram') {
       toast.warning("فیلترشکن رو روشن کن برای تلگرام");
@@ -170,15 +196,24 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     setLoading(true);
     try {
       const result = await requestOTP(phoneVal, platform);
-      if (result.status === 'deep_link') {
+      if (result.status === 'awaiting_contact_share') {
+        setDeepLinkUrl(null);
+        setAwaitingContact(true);
+        setStep('otp');
+        setCode('');
+        setOtpError(null);
+        startContactSharePolling(phoneVal);
+      } else if (result.status === 'deep_link') {
         const url = platform === 'bale' ? result.bale_url : result.telegram_url;
         setDeepLinkUrl(url ?? null);
+        setAwaitingContact(false);
         setStep('otp');
         setCode('');
         setOtpError(null);
         startTimers();
       } else {
         setDeepLinkUrl(null);
+        setAwaitingContact(false);
         setStep('otp');
         setCode('');
         setOtpError(null);
@@ -398,6 +433,63 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   }
 
   // ── otp step ──────────────────────────────────────────────────────────────────
+
+  // Shared helper: build a generic bot URL from config usernames.
+  const botUrl = platform === 'bale'
+    ? (otpConfig?.bale_username ? `https://ble.ir/${otpConfig.bale_username}` : null)
+    : (otpConfig?.tg_username ? `https://t.me/${otpConfig.tg_username}` : null);
+
+  // ── Awaiting contact-share: show instructions + spinner, no OTP input ─────
+  if (awaitingContact) {
+    return (
+      <div className="space-y-4 pt-2">
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-center">دریافت کد از {platformLabel}</p>
+          <ol className="space-y-2 text-sm text-muted-foreground">
+            {botUrl && (
+              <li className="flex items-start gap-2">
+                <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">۱</span>
+                <a href={botUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  روی اینجا کلیک کنید تا ربات {platformLabel} باز شود
+                </a>
+              </li>
+            )}
+            <li className="flex items-start gap-2">
+              <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۲' : '۱'}</span>
+              <span>در {platformLabel} روی /start کلیک کنید</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۳' : '۲'}</span>
+              <span>دکمه «اشتراک مخاطب» را بزنید تا شماره شما ثبت شود</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۴' : '۳'}</span>
+              <span>بعد از اشتراک، کد به صورت خودکار برای شما ارسال می‌شود</span>
+            </li>
+          </ol>
+        </div>
+
+        <div className="flex items-center justify-center gap-2 py-3 rounded-lg bg-muted/50 border border-dashed">
+          <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <span className="text-sm text-muted-foreground">در انتظار اشتراک مخاطب...</span>
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={() => {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setAwaitingContact(false);
+            setStep('phone');
+          }}
+        >
+          ← بازگشت
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 pt-2">
       {deepLinkUrl ? (
@@ -415,42 +507,9 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-center">
-            دریافت کد از {platformLabel}
-          </p>
-          <ol className="space-y-2 text-sm text-muted-foreground">
-            {(() => {
-              const botUrl = platform === 'bale'
-                ? (otpConfig?.bale_username ? `https://ble.ir/${otpConfig.bale_username}` : null)
-                : (otpConfig?.tg_username ? `https://t.me/${otpConfig.tg_username}` : null);
-              return (
-                <>
-                  {botUrl && (
-                    <li className="flex items-start gap-2">
-                      <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">۱</span>
-                      <a href={botUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                        روی اینجا کلیک کنید تا ربات {platformLabel} باز شود
-                      </a>
-                    </li>
-                  )}
-                  <li className="flex items-start gap-2">
-                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۲' : '۱'}</span>
-                    <span>در {platformLabel} روی /start کلیک کنید</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۳' : '۲'}</span>
-                    <span>دکمه «اشتراک مخاطب» را بزنید تا شماره شما ثبت شود</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۴' : '۳'}</span>
-                    <span>کد ۶ رقمی که ربات ارسال کرد را در کادر زیر وارد کنید</span>
-                  </li>
-                </>
-              );
-            })()}
-          </ol>
-        </div>
+        <p className="text-sm text-center text-muted-foreground">
+          کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
+        </p>
       )}
 
       <OTPInput6

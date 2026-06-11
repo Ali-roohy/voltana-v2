@@ -134,12 +134,23 @@ type voltanaClaims struct {
 }
 
 // OTPDeepLinkInfo is returned by RequestOTP when the delivery method is
-// "deeplink" and the user has no existing chat_id. A nil value means the
-// normal anti-enum 202 path should be used.
+// "deeplink" (BaleURL/TgURL set) or when a registration OTP is pending
+// contact-share confirmation (AwaitingContact = true).
+// A nil value means the normal anti-enum 202 path should be used.
 type OTPDeepLinkInfo struct {
-	BaleURL string
-	TgURL   string
+	BaleURL         string
+	TgURL           string
+	AwaitingContact bool // contact_share mode: contact not yet in Redis
 }
+
+const (
+	// otpPendingTTL is how long a "pending" registration OTP survives while we
+	// wait for the user to share their contact in the bot.
+	otpPendingTTL = 10 * time.Minute
+	// otpSentTTL is the TTL for the "already sent" sentinel (slightly longer than
+	// the active OTP so re-polls return "otp_sent" until the code expires).
+	otpSentTTL = otpTTL + 30*time.Second
+)
 
 // AuthService handles all authentication business logic.
 type AuthService struct {
@@ -398,15 +409,27 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 		return s.requestOTPDeeplink(ctx, normalized, platform)
 	}
 
-	// contact_share mode (legacy): 60s cooldown — skip the send but still return nil.
+	// contact_share mode: per-phone cooldown.
 	_, _ = s.tokens.CheckRateLimit(ctx, "otp:cooldown:"+normalized, 1, otpCooldownTTL)
 
 	// Look up user + linked chat.
 	user, lookupErr := s.users.FindByPhone(ctx, normalized)
 	if lookupErr != nil {
 		if errors.Is(lookupErr, repository.ErrNotFound) {
-			// Phone not registered — check for a cold-start registration contact (B5).
-			s.sendRegContactOTP(ctx, normalized, platform)
+			// Phone not yet registered.
+			// If the bot contact is already in Redis (user pre-shared), send OTP
+			// immediately (old fast path). Otherwise store a pending OTP and let
+			// the frontend poll /auth/otp/contact-status.
+			contactKey := "reg:contact:" + string(platform) + ":" + normalized
+			if _, contactFound, _ := s.tokens.CacheGet(ctx, contactKey); contactFound {
+				s.sendRegContactOTP(ctx, normalized, platform)
+				return nil, nil
+			}
+			// No contact yet — generate pending OTP for polling flow.
+			if err := s.storeRegPendingOTP(ctx, normalized, platform); err != nil {
+				log.Printf("otp: pending store failed: %v", err)
+			}
+			return &OTPDeepLinkInfo{AwaitingContact: true}, nil
 		}
 		return nil, nil
 	}
@@ -521,6 +544,76 @@ func (s *AuthService) sendRegContactOTP(ctx context.Context, normalized string, 
 	if err := sender.Send(ctx, chatID, code); err != nil {
 		log.Printf("otp: reg send failed: %v", err)
 	}
+}
+
+// storeRegPendingOTP generates an OTP code and stores it in the "pending" slot
+// used by the contact-share polling flow. The OTP is not sent yet.
+func (s *AuthService) storeRegPendingOTP(ctx context.Context, normalized string, platform Platform) error {
+	code, err := generateOTPCode()
+	if err != nil {
+		return fmt.Errorf("generate: %w", err)
+	}
+	key := "otp:pending:reg:" + string(platform) + ":" + normalized
+	return s.tokens.CacheSet(ctx, key, code, otpPendingTTL)
+}
+
+// CheckContactShareStatus is polled by the frontend after RequestOTP returns
+// {status:"awaiting_contact_share"}. Returns:
+//   - "awaiting_contact_share" — user hasn't shared contact in the bot yet
+//   - "otp_sent"               — OTP just dispatched (or already dispatched); timer can start
+//   - "expired"                — pending OTP TTL elapsed; user must restart
+func (s *AuthService) CheckContactShareStatus(ctx context.Context, phone string, platform Platform) (string, error) {
+	normalized, err := normalizePhone(phone)
+	if err != nil {
+		return "expired", nil
+	}
+
+	sentKey := "otp:sent:reg:" + string(platform) + ":" + normalized
+	pendingKey := "otp:pending:reg:" + string(platform) + ":" + normalized
+	contactKey := "reg:contact:" + string(platform) + ":" + normalized
+
+	// Idempotency: already dispatched on a previous poll.
+	if _, sent, _ := s.tokens.CacheGet(ctx, sentKey); sent {
+		return "otp_sent", nil
+	}
+
+	// No pending OTP → session expired.
+	if _, hasPending, _ := s.tokens.CacheGet(ctx, pendingKey); !hasPending {
+		return "expired", nil
+	}
+
+	// Contact not yet shared in the bot.
+	chatID, hasContact, _ := s.tokens.CacheGet(ctx, contactKey)
+	if !hasContact {
+		return "awaiting_contact_share", nil
+	}
+
+	// Atomically claim the pending code (CacheGetDel prevents double-dispatch).
+	code, claimed, _ := s.tokens.CacheGetDel(ctx, pendingKey)
+	if !claimed {
+		// Another concurrent poll already handled it.
+		return "otp_sent", nil
+	}
+
+	// Promote to active OTP (60 s window — same as deeplink / login flow).
+	activeKey := "otp:reg:" + string(platform) + ":" + normalized
+	if setErr := s.tokens.CacheSet(ctx, activeKey, code, otpTTL); setErr != nil {
+		log.Printf("otp: contact-status: cache set failed: %v", setErr)
+		return "expired", nil
+	}
+
+	// Sent sentinel — keeps idempotent re-polls returning "otp_sent".
+	_ = s.tokens.CacheSet(ctx, sentKey, "1", otpSentTTL)
+
+	// Dispatch.
+	sender := s.senderForPlatform(platform)
+	if sender == nil {
+		log.Printf("otp: contact-status: no sender for platform %s", platform)
+	} else if sendErr := sender.Send(ctx, chatID, code); sendErr != nil {
+		log.Printf("otp: contact-status: send failed: %v", sendErr)
+	}
+
+	return "otp_sent", nil
 }
 
 // senderForPlatform returns the OTPSender for the given platform (may be nil).
