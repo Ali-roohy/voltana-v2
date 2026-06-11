@@ -19,7 +19,7 @@ export interface Me {
 }
 
 export interface OTPRequestResult {
-  status?: "deep_link" | "awaiting_contact_share";
+  status?: "deep_link" | "awaiting_contact_share" | "not_registered";
   bale_url?: string | null;
   telegram_url?: string | null;
 }

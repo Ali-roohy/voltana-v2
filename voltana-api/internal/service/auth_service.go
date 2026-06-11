@@ -136,11 +136,16 @@ type voltanaClaims struct {
 // OTPDeepLinkInfo is returned by RequestOTP when the delivery method is
 // "deeplink" (BaleURL/TgURL set) or when a registration OTP is pending
 // contact-share confirmation (AwaitingContact = true).
+// NotRegistered is set when the caller is in login mode and the phone does not
+// exist in the database — lets the handler surface a helpful error instead of
+// a silent anti-enum 202 that leaves the user waiting for an OTP that will
+// never arrive.
 // A nil value means the normal anti-enum 202 path should be used.
 type OTPDeepLinkInfo struct {
 	BaleURL         string
 	TgURL           string
 	AwaitingContact bool // contact_share mode: contact not yet in Redis
+	NotRegistered   bool // login mode: phone not in DB
 }
 
 const (
@@ -406,7 +411,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 	}
 
 	if deliveryMethod == "deeplink" {
-		return s.requestOTPDeeplink(ctx, normalized, platform)
+		return s.requestOTPDeeplink(ctx, normalized, platform, isRegister)
 	}
 
 	// contact_share mode: per-phone cooldown.
@@ -419,10 +424,10 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 			// Phone not yet registered.
 			// Only engage the registration pending-OTP flow when the caller explicitly
 			// indicated registration intent. For login attempts with an unknown phone
-			// we fall through to the anti-enum 202 path (don't leak that the phone
-			// is unregistered and don't allocate a pending OTP slot).
+			// return NotRegistered so the frontend can show a helpful error instead of
+			// silently starting a countdown for an OTP that will never arrive.
 			if !isRegister {
-				return nil, nil
+				return &OTPDeepLinkInfo{NotRegistered: true}, nil
 			}
 			// If the bot contact is already in Redis (user pre-shared), send OTP
 			// immediately (old fast path). Otherwise store a pending OTP and let
@@ -468,7 +473,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 // sending an OTP (the OTP is sent later by HandleDeepLinkOTP when the bot
 // receives /start phone_<E164>). When the user already has a chat_id, it sends
 // the OTP directly and returns (nil, nil) → handler uses 202.
-func (s *AuthService) requestOTPDeeplink(ctx context.Context, normalized string, platform Platform) (*OTPDeepLinkInfo, error) {
+func (s *AuthService) requestOTPDeeplink(ctx context.Context, normalized string, platform Platform, isRegister bool) (*OTPDeepLinkInfo, error) {
 	user, err := s.users.FindByPhone(ctx, normalized)
 	hasChatID := false
 	if err == nil {
@@ -478,6 +483,10 @@ func (s *AuthService) requestOTPDeeplink(ctx context.Context, normalized string,
 		default:
 			hasChatID = user.BaleChatID != nil
 		}
+	} else if errors.Is(err, repository.ErrNotFound) && !isRegister {
+		// Login attempt with an unregistered phone — signal the frontend so it
+		// can show a helpful error instead of starting a countdown that never ends.
+		return &OTPDeepLinkInfo{NotRegistered: true}, nil
 	}
 
 	if hasChatID {

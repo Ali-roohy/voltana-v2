@@ -308,6 +308,10 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	}
 
 	if deepLink != nil {
+		if deepLink.NotRegistered {
+			c.JSON(http.StatusOK, gin.H{"status": "not_registered"})
+			return
+		}
 		if deepLink.AwaitingContact {
 			c.JSON(http.StatusOK, gin.H{"status": "awaiting_contact_share"})
 			return
