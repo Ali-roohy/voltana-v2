@@ -61,9 +61,10 @@ func (LogOTPSender) Send(_ context.Context, chatID, _ string) error {
 
 func sendMessage(ctx context.Context, baseURL, chatID, text string) error {
 	payload, _ := json.Marshal(map[string]any{
-		"chat_id":    chatID,
-		"text":       text,
-		"parse_mode": "Markdown",
+		"chat_id":         chatID,
+		"text":            text,
+		"parse_mode":      "Markdown",
+		"protect_content": true, // prevents forwarding / saving
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/sendMessage", bytes.NewReader(payload))
 	if err != nil {
