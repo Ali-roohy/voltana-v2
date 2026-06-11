@@ -195,8 +195,13 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     }
     setLoading(true);
     try {
-      const result = await requestOTP(phoneVal, platform);
+      const result = await requestOTP(phoneVal, platform, mode);
       if (result.status === 'awaiting_contact_share') {
+        if (mode === 'login') {
+          // Login with an unregistered phone — guide user to register instead.
+          toast.error('این شماره در سیستم ثبت نشده است — ابتدا ثبت نام کنید');
+          return;
+        }
         setDeepLinkUrl(null);
         setAwaitingContact(true);
         setStep('otp');

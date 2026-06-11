@@ -376,7 +376,7 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*domain.TokenClaims,
 // Returns (*OTPDeepLinkInfo, nil) when the system is in "deeplink" mode and
 // the user has no existing chat_id — the handler should return 200 + URL.
 // Returns (nil, ErrRateLimitExceeded) when the caller is rate-limited.
-func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform Platform) (*OTPDeepLinkInfo, error) {
+func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform Platform, isRegister bool) (*OTPDeepLinkInfo, error) {
 	// Per-IP guard (10/15m)
 	if ok, err := s.tokens.CheckRateLimit(ctx, "otp:rl:ip:"+ip, otpIPRateMax, otpIPRateWindow); err != nil {
 		return nil, fmt.Errorf("rate limit: %w", err)
@@ -417,6 +417,13 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, ip string, platform
 	if lookupErr != nil {
 		if errors.Is(lookupErr, repository.ErrNotFound) {
 			// Phone not yet registered.
+			// Only engage the registration pending-OTP flow when the caller explicitly
+			// indicated registration intent. For login attempts with an unknown phone
+			// we fall through to the anti-enum 202 path (don't leak that the phone
+			// is unregistered and don't allocate a pending OTP slot).
+			if !isRegister {
+				return nil, nil
+			}
 			// If the bot contact is already in Redis (user pre-shared), send OTP
 			// immediately (old fast path). Otherwise store a pending OTP and let
 			// the frontend poll /auth/otp/contact-status.

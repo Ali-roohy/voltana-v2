@@ -97,8 +97,9 @@ export async function resendVerification(email: string): Promise<void> {
 export async function requestOTP(
   phone: string,
   platform: "bale" | "telegram",
+  mode: "login" | "register" = "register",
 ): Promise<OTPRequestResult> {
-  const res = await api.post<OTPRequestResult>("/auth/otp/request", { phone, platform });
+  const res = await api.post<OTPRequestResult>("/auth/otp/request", { phone, platform, mode });
   return res ?? {};
 }
 

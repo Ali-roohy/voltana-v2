@@ -675,7 +675,7 @@ func TestRequestOTP_UnknownPhone_NoError(t *testing.T) {
 	svc, _, _, sender := newTestServiceWithBale()
 
 	// Anti-enumeration: unknown phone must not error and must not send (contact_share mode).
-	_, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale)
+	_, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale, true)
 	if err != nil {
 		t.Fatalf("want nil for unknown phone, got %v", err)
 	}
@@ -689,7 +689,7 @@ func TestRequestOTP_LinkedUser_SendsOTP(t *testing.T) {
 	mustRegister(t, svc, "otp@example.com", "password")
 	users.linkBot("otp@example.com", "+989121234567")
 
-	if _, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale); err != nil {
+	if _, err := svc.RequestOTP(context.Background(), "09121234567", "1.2.3.4", service.PlatformBale, true); err != nil {
 		t.Fatalf("RequestOTP: %v", err)
 	}
 	if len(sender.sent) != 1 {
@@ -707,12 +707,12 @@ func TestRequestOTP_RateLimited(t *testing.T) {
 
 	// 3 requests are allowed.
 	for i := 0; i < 3; i++ {
-		if _, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale); err != nil {
+		if _, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale, true); err != nil {
 			t.Fatalf("request %d: %v", i+1, err)
 		}
 	}
 	// 4th must be rejected.
-	_, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale)
+	_, err := svc.RequestOTP(context.Background(), "+989120000001", "5.5.5.5", service.PlatformBale, true)
 	if !errors.Is(err, service.ErrRateLimitExceeded) {
 		t.Errorf("want ErrRateLimitExceeded on 4th request, got %v", err)
 	}
@@ -815,7 +815,7 @@ func TestRequestOTP_RegContactSendsOTP(t *testing.T) {
 	// Phone not in users but a reg:contact was stored by bot cold-start.
 	store.cache["reg:contact:bale:+989121234567"] = "reg_chat_123"
 
-	if _, err := svc.RequestOTP(context.Background(), "+989121234567", "1.2.3.4", service.PlatformBale); err != nil {
+	if _, err := svc.RequestOTP(context.Background(), "+989121234567", "1.2.3.4", service.PlatformBale, true); err != nil {
 		t.Fatalf("RequestOTP: %v", err)
 	}
 	if len(sender.sent) != 1 {

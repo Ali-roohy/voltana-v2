@@ -65,6 +65,7 @@ type tokenResponse struct {
 type otpRequestBody struct {
 	Phone    string `json:"phone"    binding:"required"`
 	Platform string `json:"platform"` // "bale" | "telegram"; defaults to "bale"
+	Mode     string `json:"mode"`     // "register" | "login"; defaults to "register"
 }
 
 type otpVerifyBody struct {
@@ -294,7 +295,8 @@ func (h *AuthHandler) OTPRequest(c *gin.Context) {
 	}
 
 	platform := normalizePlatform(req.Platform)
-	deepLink, err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP(), platform)
+	isRegister := req.Mode != "login" // default to registration intent when not specified
+	deepLink, err := h.auth.RequestOTP(c.Request.Context(), req.Phone, c.ClientIP(), platform, isRegister)
 	if err != nil {
 		if errors.Is(err, service.ErrRateLimitExceeded) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
