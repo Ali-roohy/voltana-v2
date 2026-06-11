@@ -106,9 +106,10 @@ export default function AdminUsers() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-right">کاربر</TableHead>
+                        <TableHead className="text-right">نام</TableHead>
+                        <TableHead className="text-right">ایمیل</TableHead>
+                        <TableHead className="text-right">تلفن</TableHead>
                         <TableHead className="text-center">ادمین</TableHead>
-                        <TableHead className="text-center">ایمیل</TableHead>
                         <TableHead className="text-center">بات</TableHead>
                         <TableHead className="text-right">تاریخ عضویت</TableHead>
                         <TableHead className="text-center">عملیات</TableHead>
@@ -119,13 +120,35 @@ export default function AdminUsers() {
                         const isSelf = u.id === me?.id;
                         return (
                           <TableRow key={u.id} className={isSelf ? "bg-muted/30" : ""}>
-                            <TableCell className="font-mono text-xs max-w-[200px]">
+                            {/* نام */}
+                            <TableCell className="text-sm max-w-[140px]">
                               <div className="truncate">
-                                {u.email ?? u.phone ?? "—"}
+                                {u.full_name ?? <span className="text-muted-foreground">—</span>}
                               </div>
                               {isSelf && (
                                 <span className="text-[10px] text-muted-foreground">(شما)</span>
                               )}
+                            </TableCell>
+
+                            {/* ایمیل */}
+                            <TableCell className="max-w-[180px]">
+                              {u.email ? (
+                                <div className="space-y-0.5">
+                                  <div className="font-mono text-xs truncate">{u.email}</div>
+                                  {u.is_email_verified ? (
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1 text-green-600 border-green-600">تأیید شده</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1 text-muted-foreground">تأیید نشده</Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* تلفن */}
+                            <TableCell className="font-mono text-xs">
+                              {u.phone ?? <span className="text-muted-foreground">—</span>}
                             </TableCell>
 
                             <TableCell className="text-center">
@@ -133,14 +156,6 @@ export default function AdminUsers() {
                                 <Badge variant="default" className="text-xs">ادمین</Badge>
                               ) : (
                                 <Badge variant="secondary" className="text-xs">کاربر</Badge>
-                              )}
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              {u.is_email_verified ? (
-                                <Badge variant="outline" className="text-xs text-green-600 border-green-600">تأیید شده</Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-xs text-muted-foreground">تأیید نشده</Badge>
                               )}
                             </TableCell>
 
@@ -246,7 +261,7 @@ export default function AdminUsers() {
             <AlertDialogTitle>حذف کاربر</AlertDialogTitle>
             <AlertDialogDescription>
               آیا مطمئن هستید که می‌خواهید کاربر{" "}
-              <span className="font-semibold">{toDelete?.email ?? toDelete?.phone ?? toDelete?.id}</span>{" "}
+              <span className="font-semibold">{toDelete?.full_name ?? toDelete?.email ?? toDelete?.phone ?? toDelete?.id}</span>{" "}
               را حذف کنید؟ تمام داده‌های این کاربر (خودروها، جلسات شارژ و …) به صورت دائمی حذف می‌شوند.
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -12,6 +12,7 @@ type User struct {
 	PasswordHash    string
 	IsEmailVerified bool
 	IsAdmin         bool
+	FullName        *string // optional display name, nil until user sets it
 	Phone           *string // E.164, nil until bot is linked
 	BaleChatID      *string // nil until linked via Bale
 	TelegramChatID  *string // nil until linked via Telegram

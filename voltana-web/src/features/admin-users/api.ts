@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 
 export interface UserSummary {
   id: string;
+  full_name: string | null;
   email: string | null;
   phone: string | null;
   is_admin: boolean;

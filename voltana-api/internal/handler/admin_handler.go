@@ -75,6 +75,7 @@ func (h *AdminHandler) TestOTPDelivery(c *gin.Context) {
 
 type userSummary struct {
 	ID              string    `json:"id"`
+	FullName        *string   `json:"full_name"`
 	Email           *string   `json:"email"`
 	Phone           *string   `json:"phone"`
 	IsAdmin         bool      `json:"is_admin"`
@@ -87,6 +88,7 @@ type userSummary struct {
 func toUserSummary(u *domain.User) userSummary {
 	s := userSummary{
 		ID:              u.ID.String(),
+		FullName:        u.FullName,
 		IsAdmin:         u.IsAdmin,
 		IsEmailVerified: u.IsEmailVerified,
 		BaleLinked:      u.BaleChatID != nil,

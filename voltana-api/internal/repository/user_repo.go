@@ -48,7 +48,7 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 	return &pgxUserRepository{db: db}
 }
 
-const userCols = `id, email, password_hash, is_email_verified, is_admin, phone, bale_chat_id, telegram_chat_id, created_at, updated_at`
+const userCols = `id, email, password_hash, is_email_verified, is_admin, full_name, phone, bale_chat_id, telegram_chat_id, created_at, updated_at`
 
 func (r *pgxUserRepository) Create(ctx context.Context, email, passwordHash string) (*domain.User, error) {
 	row := r.db.QueryRow(ctx,
@@ -93,7 +93,7 @@ func (r *pgxUserRepository) CreateWithPhone(ctx context.Context, phone string, e
 	var pgEmail pgtype.Text
 	err := row.Scan(
 		&pgID, &pgEmail, &u.PasswordHash, &u.IsEmailVerified, &u.IsAdmin,
-		&u.Phone, &u.BaleChatID, &u.TelegramChatID,
+		&u.FullName, &u.Phone, &u.BaleChatID, &u.TelegramChatID,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
@@ -151,7 +151,7 @@ func (r *pgxUserRepository) ListAll(ctx context.Context, limit, offset int) ([]*
 		var pgEmail pgtype.Text
 		if err := rows.Scan(
 			&pgID, &pgEmail, &u.PasswordHash, &u.IsEmailVerified, &u.IsAdmin,
-			&u.Phone, &u.BaleChatID, &u.TelegramChatID,
+			&u.FullName, &u.Phone, &u.BaleChatID, &u.TelegramChatID,
 			&u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
@@ -215,7 +215,7 @@ func scanUser(row pgx.Row) (*domain.User, error) {
 	var pgEmail pgtype.Text // nullable after migration 000012
 	err := row.Scan(
 		&pgID, &pgEmail, &u.PasswordHash, &u.IsEmailVerified, &u.IsAdmin,
-		&u.Phone, &u.BaleChatID, &u.TelegramChatID,
+		&u.FullName, &u.Phone, &u.BaleChatID, &u.TelegramChatID,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
