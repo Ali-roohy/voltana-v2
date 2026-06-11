@@ -1095,16 +1095,28 @@ func normalizePhone(raw string) (string, error) {
 
 	switch {
 	case strings.HasPrefix(s, "+"):
-		// already E.164
+		// Already E.164 — keep as-is.
+	case strings.HasPrefix(s, "00"):
+		// International exit-code prefix (00<cc><number>) → +<cc><number>.
+		s = "+" + s[2:]
 	case strings.HasPrefix(s, "98"):
+		// Iran without leading +.
 		s = "+" + s
-	case strings.HasPrefix(s, "0"):
+	case strings.HasPrefix(s, "0") && len(s) == 11:
+		// Standard Iranian mobile: 0 + 10 digits → +98 + 10 digits.
 		s = "+98" + s[1:]
+	case strings.HasPrefix(s, "0"):
+		// Leading 0 that is NOT the Iranian 11-digit format.
+		// Treat 0 as a local international-access digit and strip it.
+		// e.g. 0971522890098 (UAE) → +971522890098.
+		s = "+" + s[1:]
 	default:
-		return "", ErrInvalidPhone
+		// Bare digits with country code but no prefix symbol.
+		// e.g. 971522890098 (UAE) → +971522890098.
+		s = "+" + s
 	}
 
-	// E.164: "+" followed by 7–15 digits.
+	// E.164: "+" followed by 7–15 digits (total 8–16 chars).
 	if len(s) < 8 || len(s) > 16 {
 		return "", ErrInvalidPhone
 	}
