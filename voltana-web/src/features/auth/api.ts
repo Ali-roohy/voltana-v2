@@ -26,6 +26,8 @@ export interface OTPRequestResult {
 
 export interface OTPConfig {
   delivery_method: "deeplink" | "contact_share";
+  bale_username?: string;
+  tg_username?: string;
 }
 
 export const getMe = () => api.get<Me>("/v1/me");

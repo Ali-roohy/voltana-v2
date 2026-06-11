@@ -333,7 +333,15 @@ func (h *AuthHandler) OTPConfig(c *gin.Context) {
 			method = settings.OTPDeliveryMethod
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"delivery_method": method})
+	resp := gin.H{"delivery_method": method}
+	baleUser, tgUser := h.auth.GetBotUsernames()
+	if baleUser != "" {
+		resp["bale_username"] = baleUser
+	}
+	if tgUser != "" {
+		resp["tg_username"] = tgUser
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // OTPVerify godoc
@@ -389,6 +397,10 @@ func (h *AuthHandler) OTPRegister(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, service.ErrPhoneTaken) {
 			c.JSON(http.StatusConflict, gin.H{"error": "phone already registered", "code": "PHONE_TAKEN"})
+			return
+		}
+		if errors.Is(err, service.ErrEmailTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already registered", "code": "EMAIL_TAKEN"})
 			return
 		}
 		if errors.Is(err, service.ErrOTPLocked) {

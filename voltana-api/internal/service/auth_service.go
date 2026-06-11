@@ -81,6 +81,7 @@ var (
 	ErrInvalidPhone  = errors.New("invalid phone number")
 	ErrNoBotConfig   = errors.New("no bot configured")
 	ErrPhoneTaken    = errors.New("phone already registered")
+	ErrEmailTaken    = errors.New("email already registered")
 	ErrNoPasswordSet    = errors.New("no password set for this account — use OTP to log in")
 	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
 )
@@ -195,6 +196,11 @@ func (s *AuthService) SetBotSenders(bale, tg OTPSender, baleBotUsername, tgBotUs
 // default), RequestOTP uses the legacy contact_share behaviour.
 func (s *AuthService) SetSystemSettingsRepo(repo repository.SystemSettingsRepository) {
 	s.sysSettings = repo
+}
+
+// GetBotUsernames returns the configured bot usernames (may be empty strings when not set).
+func (s *AuthService) GetBotUsernames() (bale, tg string) {
+	return s.baleBotUsername, s.tgBotUsername
 }
 
 // ── email/password auth (existing, unchanged) ─────────────────────────────────
@@ -701,6 +707,14 @@ func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip s
 		return "", "", ErrPhoneTaken
 	}
 
+	// Email uniqueness pre-check — avoids a DB constraint 500 if the email is
+	// already registered via a different account.
+	if email != nil && *email != "" {
+		if _, lookupErr := s.users.FindByEmail(ctx, *email); lookupErr == nil {
+			return "", "", ErrEmailTaken
+		}
+	}
+
 	// Look up the chatID stored by the bot cold-start (B5).
 	// Anti-enum: if no contact stored → consume OTP, return INVALID_OTP (no hint).
 	contactKey := "reg:contact:" + string(platform) + ":" + normalized
@@ -721,6 +735,9 @@ func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip s
 	if createErr != nil {
 		if errors.Is(createErr, repository.ErrPhoneTaken) {
 			return "", "", ErrPhoneTaken
+		}
+		if errors.Is(createErr, repository.ErrEmailTaken) {
+			return "", "", ErrEmailTaken
 		}
 		return "", "", fmt.Errorf("otp: create user: %w", createErr)
 	}

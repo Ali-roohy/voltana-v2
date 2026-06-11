@@ -251,6 +251,8 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
       setCode('');
       if (err instanceof ApiError && err.status === 409 && err.code === 'PHONE_TAKEN') {
         setOtpError({ type: 'phone_taken' });
+      } else if (err instanceof ApiError && err.status === 409 && err.code === 'EMAIL_TAKEN') {
+        toast.error('این ایمیل قبلاً در سیستم ثبت شده — ایمیل را خالی بگذارید یا از ایمیل دیگری استفاده کنید');
       } else if (err instanceof ApiError && err.status === 401) {
         if (err.code === 'OTP_LOCKED') {
           setOtpError({ type: 'locked' });
@@ -413,9 +415,42 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           </p>
         </div>
       ) : (
-        <p className="text-sm text-center text-muted-foreground">
-          کد ۶ رقمی ارسال‌شده به {platformLabel} را وارد کنید:
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-center">
+            دریافت کد از {platformLabel}
+          </p>
+          <ol className="space-y-2 text-sm text-muted-foreground">
+            {(() => {
+              const botUrl = platform === 'bale'
+                ? (otpConfig?.bale_username ? `https://ble.ir/${otpConfig.bale_username}` : null)
+                : (otpConfig?.tg_username ? `https://t.me/${otpConfig.tg_username}` : null);
+              return (
+                <>
+                  {botUrl && (
+                    <li className="flex items-start gap-2">
+                      <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">۱</span>
+                      <a href={botUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                        روی اینجا کلیک کنید تا ربات {platformLabel} باز شود
+                      </a>
+                    </li>
+                  )}
+                  <li className="flex items-start gap-2">
+                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۲' : '۱'}</span>
+                    <span>در {platformLabel} روی /start کلیک کنید</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۳' : '۲'}</span>
+                    <span>دکمه «اشتراک مخاطب» را بزنید تا شماره شما ثبت شود</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{botUrl ? '۴' : '۳'}</span>
+                    <span>کد ۶ رقمی که ربات ارسال کرد را در کادر زیر وارد کنید</span>
+                  </li>
+                </>
+              );
+            })()}
+          </ol>
+        </div>
       )}
 
       <OTPInput6
@@ -475,7 +510,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
         disabled={loading || (cooldown > 0 && !isExpired) || isLocked}
         onClick={handleResend}
       >
-        {cooldown > 0 && !isExpired ? `ارسال مجدد ${cooldown}ث` : 'ارسال مجدد'}
+        ارسال مجدد
       </Button>
     </div>
   );
