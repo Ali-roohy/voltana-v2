@@ -20,7 +20,9 @@ var (
 )
 
 type UserRepository interface {
-	Create(ctx context.Context, email, passwordHash string) (*domain.User, error)
+	// Create registers an email/password user. fullName and phone are optional
+	// (nil → NULL); phone must already be normalized E.164 by the service.
+	Create(ctx context.Context, email, passwordHash string, fullName, phone *string) (*domain.User, error)
 	// CreateWithPhone creates a passwordless user identified by phone + bot chat_id.
 	// email is optional (nil → NULL). Returns ErrPhoneTaken or ErrEmailTaken on conflict.
 	CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error)
@@ -50,12 +52,12 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 
 const userCols = `id, email, password_hash, is_email_verified, is_admin, full_name, phone, bale_chat_id, telegram_chat_id, created_at, updated_at`
 
-func (r *pgxUserRepository) Create(ctx context.Context, email, passwordHash string) (*domain.User, error) {
+func (r *pgxUserRepository) Create(ctx context.Context, email, passwordHash string, fullName, phone *string) (*domain.User, error) {
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, is_admin)
-		 VALUES ($1, $2, NOT EXISTS (SELECT 1 FROM users))
+		`INSERT INTO users (email, password_hash, full_name, phone, is_admin)
+		 VALUES ($1, $2, $3, $4, NOT EXISTS (SELECT 1 FROM users))
 		 RETURNING `+userCols,
-		email, passwordHash,
+		email, passwordHash, fullName, phone,
 	)
 	return scanUser(row)
 }
@@ -224,6 +226,9 @@ func scanUser(row pgx.Row) (*domain.User, error) {
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "uq_users_phone" {
+				return nil, ErrPhoneTaken
+			}
 			return nil, ErrEmailTaken
 		}
 		return nil, err

@@ -155,6 +155,10 @@ const (
 	// otpSentTTL is the TTL for the "already sent" sentinel (slightly longer than
 	// the active OTP so re-polls return "otp_sent" until the code expires).
 	otpSentTTL = otpTTL + 30*time.Second
+	// deeplinkPendingTTL is how long a deep-link session stays in "awaiting_bot"
+	// before the status poll reports it expired. Generous on purpose: the user
+	// may need to install/open Bale before tapping the deep link (TASK-0036 BUG-5).
+	deeplinkPendingTTL = 15 * time.Minute
 )
 
 // AuthService handles all authentication business logic.
@@ -221,12 +225,24 @@ func (s *AuthService) GetBotUsernames() (bale, tg string) {
 
 // ── email/password auth (existing, unchanged) ─────────────────────────────────
 
-func (s *AuthService) Register(ctx context.Context, email, password string) (*domain.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, password, fullName, phone string) (*domain.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
-	user, err := s.users.Create(ctx, email, string(hash))
+	var namePtr *string
+	if trimmed := strings.TrimSpace(fullName); trimmed != "" {
+		namePtr = &trimmed
+	}
+	var phonePtr *string
+	if strings.TrimSpace(phone) != "" {
+		normalized, normErr := normalizePhone(phone)
+		if normErr != nil {
+			return nil, ErrInvalidPhone
+		}
+		phonePtr = &normalized
+	}
+	user, err := s.users.Create(ctx, email, string(hash), namePtr, phonePtr)
 	if err != nil {
 		return nil, err
 	}
@@ -508,6 +524,13 @@ func (s *AuthService) requestOTPDeeplink(ctx context.Context, normalized string,
 	}
 
 	// No chat_id — return deep-link URL so the frontend can open the bot.
+	// Mark the session as awaiting the bot so the status poll can distinguish
+	// "user hasn't tapped the deep link yet" from a genuinely expired session
+	// (TASK-0036 BUG-5 — without this, the first poll returned "expired").
+	dlKey := "otp:dlpending:" + string(platform) + ":" + normalized
+	if setErr := s.tokens.CacheSet(ctx, dlKey, "1", deeplinkPendingTTL); setErr != nil {
+		log.Printf("otp: deeplink: pending marker set failed: %v", setErr)
+	}
 	info := &OTPDeepLinkInfo{}
 	if s.baleBotUsername != "" {
 		info.BaleURL = "https://ble.ir/" + s.baleBotUsername + "?start=phone_" + normalized
@@ -603,9 +626,16 @@ func (s *AuthService) CheckContactShareStatus(ctx context.Context, phone string,
 		}
 	}
 
+	// Deep-link session where the user hasn't opened the bot yet (TASK-0036
+	// BUG-5): keep the frontend in its neutral "open the bot" state instead of
+	// reporting expiry. The marker's 15-minute TTL is the real timeout.
+	if _, awaitingBot, _ := s.tokens.CacheGet(ctx, "otp:dlpending:"+string(platform)+":"+normalized); awaitingBot {
+		return "awaiting_bot", nil
+	}
+
 	// No pending OTP → session expired (contact_share flow only; deep_link
-	// sessions have no pendingKey so they fall into "expired" here once the
-	// active OTP has expired — that is the correct behaviour).
+	// sessions are covered by the dlpending marker above, so reaching here
+	// with neither key means the session is genuinely over).
 	if _, hasPending, _ := s.tokens.CacheGet(ctx, pendingKey); !hasPending {
 		return "expired", nil
 	}
@@ -944,6 +974,10 @@ func (s *AuthService) HandleDeepLinkOTP(ctx context.Context, platform, chatID, r
 		log.Printf("otp: deeplink: no sender configured for platform %s", platform)
 		return nil
 	}
+
+	// The /start receipt IS the bot interaction — end the "awaiting_bot" state
+	// (the active OTP key set below takes over for the status poll).
+	_, _, _ = s.tokens.CacheGetDel(ctx, "otp:dlpending:"+platform+":"+normalized)
 
 	user, lookupErr := s.users.FindByPhone(ctx, normalized)
 	if lookupErr != nil {

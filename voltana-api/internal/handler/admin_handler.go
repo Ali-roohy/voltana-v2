@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -16,15 +17,23 @@ import (
 	"github.com/google/uuid"
 )
 
-// AdminHandler backs the /v1/admin/* routes (JWT + AdminOnly required).
-type AdminHandler struct {
-	auth   *service.AuthService
-	admin  *service.AdminService
-	sysSet *service.SystemSettingsService
+// BotConnectionTester is satisfied by bot.ConnectionTester — kept as a local
+// interface so the handler layer stays decoupled from the bot package (same
+// pattern as bot.LinkCallback).
+type BotConnectionTester interface {
+	Test(ctx context.Context, platform string) (username string, latency time.Duration, err error)
 }
 
-func NewAdminHandler(auth *service.AuthService, admin *service.AdminService, sysSet *service.SystemSettingsService) *AdminHandler {
-	return &AdminHandler{auth: auth, admin: admin, sysSet: sysSet}
+// AdminHandler backs the /v1/admin/* routes (JWT + AdminOnly required).
+type AdminHandler struct {
+	auth      *service.AuthService
+	admin     *service.AdminService
+	sysSet    *service.SystemSettingsService
+	botTester BotConnectionTester
+}
+
+func NewAdminHandler(auth *service.AuthService, admin *service.AdminService, sysSet *service.SystemSettingsService, botTester BotConnectionTester) *AdminHandler {
+	return &AdminHandler{auth: auth, admin: admin, sysSet: sysSet, botTester: botTester}
 }
 
 type testOTPReq struct {
@@ -69,6 +78,45 @@ func (h *AdminHandler) TestOTPDelivery(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, testOTPResp{Success: true, Message: msg})
+}
+
+type testBotConnReq struct {
+	Platform string `json:"platform" binding:"required"`
+}
+
+type testBotConnResp struct {
+	OK          bool   `json:"ok"`
+	BotUsername string `json:"bot_username,omitempty"`
+	LatencyMS   int64  `json:"latency_ms,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// TestBotConnection handles POST /v1/admin/test-bot-connection (TASK-0036
+// BUG-8). Calls the platform's getMe endpoint server-side with the env token;
+// the token never reaches the client and errors are pre-sanitized by the
+// tester (no token in URLs/messages).
+func (h *AdminHandler) TestBotConnection(c *gin.Context) {
+	var req testBotConnReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, testBotConnResp{OK: false, Error: "platform is required"})
+		return
+	}
+	p := strings.ToLower(strings.TrimSpace(req.Platform))
+	if p != "bale" && p != "telegram" {
+		c.JSON(http.StatusBadRequest, testBotConnResp{OK: false, Error: "platform must be bale or telegram"})
+		return
+	}
+
+	username, latency, err := h.botTester.Test(c.Request.Context(), p)
+	if err != nil {
+		c.JSON(http.StatusOK, testBotConnResp{OK: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, testBotConnResp{
+		OK:          true,
+		BotUsername: username,
+		LatencyMS:   latency.Milliseconds(),
+	})
 }
 
 // ── user management ──────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useMe } from "@/features/auth/hooks";
 import { Zap, Car, Bolt, Map as MapIcon, BatteryCharging } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -28,6 +29,7 @@ export default function Index() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const { user, loading } = useAuth();
+  const { data: me } = useMe(!loading && !!user);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -169,7 +171,7 @@ export default function Index() {
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-6 sm:mb-8">
           <h2 className="font-bold mb-2 text-xl sm:text-2xl">
-            {t('dashboard.welcome')}, {user.user_metadata?.full_name || user.email}!
+            {t('dashboard.welcome')}, {me?.full_name || me?.email || me?.phone || user.email}!
           </h2>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
             <p className="text-sm sm:text-base text-muted-foreground">{t('app.tagline')}</p>

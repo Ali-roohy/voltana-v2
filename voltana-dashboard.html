@@ -715,11 +715,11 @@
     <div class="stats-row">
       <div class="stat-card fade-in" style="--c:var(--done)">
         <div class="stat-label">Done</div>
-        <div class="stat-value">34</div>
+        <div class="stat-value">35</div>
       </div>
       <div class="stat-card fade-in" style="--c:var(--ready)">
         <div class="stat-label">Ready</div>
-        <div class="stat-value">0</div>
+        <div class="stat-value">1</div>
       </div>
       <div class="stat-card fade-in" style="--c:var(--inprog)">
         <div class="stat-label">In Progress</div>
@@ -805,7 +805,7 @@
         <div>
           <div class="task-col-header bg-ready">
             <span class="s-ready">Ready</span>
-            <span class="col-count s-ready">0</span>
+            <span class="col-count s-ready">1</span>
           </div>
           <div id="col-ready"></div>
         </div>
@@ -841,7 +841,7 @@
         <div>
           <div class="task-col-header bg-done">
             <span class="s-done">Done</span>
-            <span class="col-count s-done">34</span>
+            <span class="col-count s-done">35</span>
           </div>
           <div id="col-done"></div>
         </div>
@@ -1372,20 +1372,20 @@ Output handoff to developer for any doc file changes.`,
 };
 
 const ACTIVITY = [
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>36d9d30</strong> — feat: TASK-0035 — Unify Car Creation on the EV Catalog', time: '0 seconds ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>151b9f2</strong> — feat: TASK-0034 — Add EV from Catalog to My Cars with Customization', time: '2 hours ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>2b602b7</strong> — feat: TASK-0033 — Advanced EV Car Catalog UI with Dynamic Theming', time: '3 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>08e6b15</strong> — fix: deep_link OTP timer starts only after bot sends the code', time: '14 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>06503fd</strong> — fix: GET /auth/otp/config always returns bale_username and tg_username', time: '15 hours ago' },
-  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>561d8e2</strong> — chore: update context.md — all 32 tasks DONE, Phase 4 complete', time: '15 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>6dc8973</strong> — fix: login with unregistered phone no longer starts OTP countdown', time: '18 hours ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>07a5687</strong> — feat: user management — show name, email, phone as separate columns', time: '18 hours ago' },
-  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>a4cde5d</strong> — chore: close TASK-0029, TASK-0031, TASK-0032 — all implemented and verified', time: '18 hours ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>dd06c30</strong> — feat: OTP messages sent with protect_content — no forward/save in Telegram & Bale', time: '19 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>c0297c3</strong> — fix: OTP \'wrong code\' on registration — mode param prevents login/register key collision', time: '20 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>1664fd0</strong> — fix: normalizePhone — accept multi-digit country codes (UAE +971, etc.)', time: '20 hours ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>431f225</strong> — feat: fix OTP timing in contact_share — poll-based pending OTP flow', time: '23 hours ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>a72b592</strong> — fix: OTP register 500→409 on duplicate email, contact_share UX, resend button', time: '23 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>2e95e15</strong> — fix: TASK-0036 — Bug Batch: 8 field-report fixes (admin cache, full_name/phone, OTP deep-link states, bot connectivity test)', time: '0 seconds ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>d6ddbc2</strong> — feat: TASK-0035 — Unify Car Creation on the EV Catalog', time: '3 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>151b9f2</strong> — feat: TASK-0034 — Add EV from Catalog to My Cars with Customization', time: '4 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>2b602b7</strong> — feat: TASK-0033 — Advanced EV Car Catalog UI with Dynamic Theming', time: '5 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>08e6b15</strong> — fix: deep_link OTP timer starts only after bot sends the code', time: '17 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>06503fd</strong> — fix: GET /auth/otp/config always returns bale_username and tg_username', time: '18 hours ago' },
+  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>561d8e2</strong> — chore: update context.md — all 32 tasks DONE, Phase 4 complete', time: '18 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>6dc8973</strong> — fix: login with unregistered phone no longer starts OTP countdown', time: '20 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>07a5687</strong> — feat: user management — show name, email, phone as separate columns', time: '21 hours ago' },
+  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>a4cde5d</strong> — chore: close TASK-0029, TASK-0031, TASK-0032 — all implemented and verified', time: '21 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>dd06c30</strong> — feat: OTP messages sent with protect_content — no forward/save in Telegram & Bale', time: '21 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>c0297c3</strong> — fix: OTP \'wrong code\' on registration — mode param prevents login/register key collision', time: '22 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>1664fd0</strong> — fix: normalizePhone — accept multi-digit country codes (UAE +971, etc.)', time: '23 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>431f225</strong> — feat: fix OTP timing in contact_share — poll-based pending OTP flow', time: '25 hours ago' },
 ];
 
 // ── RENDER ────────────────────────────────────────────────────────────────────

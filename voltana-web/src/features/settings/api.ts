@@ -29,3 +29,14 @@ export interface TestOTPResult {
 
 export const testOTPDelivery = (platform: "bale" | "telegram" | "email") =>
   api.post<TestOTPResult>("/v1/admin/test-otp", { platform });
+
+export interface TestBotConnectionResult {
+  ok: boolean;
+  bot_username?: string;
+  latency_ms?: number;
+  error?: string;
+}
+
+// Server-side getMe with the env bot token (admin-only; the token never reaches the client).
+export const testBotConnection = (platform: "bale" | "telegram") =>
+  api.post<TestBotConnectionResult>("/v1/admin/test-bot-connection", { platform });

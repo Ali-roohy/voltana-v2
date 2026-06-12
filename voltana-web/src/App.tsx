@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/query-client";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { I18nextProvider } from "react-i18next";
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -39,8 +40,6 @@ const AdminFallback = () => (
     در حال بارگذاری…
   </div>
 );
-
-const queryClient = new QueryClient();
 
 const SwipeableRoutes = () => {
   const navigate = useNavigate();

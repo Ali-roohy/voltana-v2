@@ -34,8 +34,10 @@ func NewAuthHandler(auth *service.AuthService, isProd bool, sysSet *service.Syst
 // ── request / response types ─────────────────────────────────────────────────
 
 type registerRequest struct {
-	Email    string `json:"email"    binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
+	Email    string `json:"email"     binding:"required,email"`
+	Password string `json:"password"  binding:"required,min=8"`
+	FullName string `json:"full_name" binding:"omitempty,max=100"`
+	Phone    string `json:"phone"     binding:"omitempty,max=20"`
 }
 
 type loginRequest struct {
@@ -93,10 +95,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.auth.Register(c.Request.Context(), req.Email, req.Password)
+	user, err := h.auth.Register(c.Request.Context(), req.Email, req.Password, req.FullName, req.Phone)
 	if err != nil {
 		if errors.Is(err, repository.ErrEmailTaken) {
 			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+			return
+		}
+		if errors.Is(err, repository.ErrPhoneTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "phone already registered", "code": "PHONE_TAKEN"})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidPhone) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid phone number"})
 			return
 		}
 		log.Printf("register: user=%s err=%v", maskEmail(req.Email), err)
@@ -274,6 +284,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"id":              user.ID,
 		"email":           user.Email,
 		"is_admin":        user.IsAdmin,
+		"full_name":       user.FullName,
 		"phone":           user.Phone,
 		"bale_linked":     user.BaleChatID != nil,
 		"telegram_linked": user.TelegramChatID != nil,

@@ -12,6 +12,7 @@ export interface Me {
   id: string;
   email: string;
   is_admin: boolean;
+  full_name: string | null;
   phone: string | null;
   bale_linked: boolean;
   telegram_linked: boolean;
@@ -25,7 +26,9 @@ export interface OTPRequestResult {
 }
 
 export interface OTPContactStatusResult {
-  status: "awaiting_contact_share" | "otp_sent" | "expired";
+  // awaiting_bot: deep-link session, user hasn't opened the bot yet (neutral
+  // wait state — the frontend keeps polling without a countdown).
+  status: "awaiting_contact_share" | "awaiting_bot" | "otp_sent" | "expired";
 }
 
 export interface OTPConfig {
@@ -36,8 +39,18 @@ export interface OTPConfig {
 
 export const getMe = () => api.get<Me>("/v1/me");
 
-export async function register(email: string, password: string): Promise<void> {
-  await api.post("/auth/register", { email, password });
+export async function register(
+  email: string,
+  password: string,
+  fullName?: string,
+  phone?: string,
+): Promise<void> {
+  await api.post("/auth/register", {
+    email,
+    password,
+    full_name: fullName || undefined,
+    phone: phone || undefined,
+  });
 }
 
 export async function login(email: string, password: string, stayLoggedIn = false): Promise<void> {

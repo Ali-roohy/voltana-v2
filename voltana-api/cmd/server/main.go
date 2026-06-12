@@ -136,7 +136,7 @@ func main() {
 
 	authH      := handler.NewAuthHandler(authSvc, isProd, sysSetSvc)
 	accountH   := handler.NewAccountHandler(authSvc)
-	adminH     := handler.NewAdminHandler(authSvc, adminSvc, sysSetSvc)
+	adminH     := handler.NewAdminHandler(authSvc, adminSvc, sysSetSvc, bot.NewConnectionTester(baleToken, tgToken))
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
 	chargingH  := handler.NewChargingHandler(chargingSvc)
@@ -211,6 +211,7 @@ func main() {
 		v1.DELETE("/stations/:id", middleware.AdminOnly(authSvc), stationH.Delete)
 
 		v1.POST("/admin/test-otp", middleware.AdminOnly(authSvc), adminH.TestOTPDelivery)
+		v1.POST("/admin/test-bot-connection", middleware.AdminOnly(authSvc), adminH.TestBotConnection)
 
 		v1.GET   ("/admin/users",     middleware.AdminOnly(authSvc), adminH.ListUsers)
 		v1.GET   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.GetUser)

@@ -15,7 +15,7 @@ func boolPtr(b bool) *bool { return &b }
 
 func TestAdminService_UpdateUser_RemoveSelfAdmin(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
 
 	svc := service.NewAdminService(repo)
@@ -27,9 +27,9 @@ func TestAdminService_UpdateUser_RemoveSelfAdmin(t *testing.T) {
 
 func TestAdminService_UpdateUser_LastAdmin(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
-	other, _ := repo.Create(context.Background(), "other@test.com", "hash")
+	other, _ := repo.Create(context.Background(), "other@test.com", "hash", nil, nil)
 
 	svc := service.NewAdminService(repo)
 	// admin tries to demote other when other is the only admin
@@ -45,9 +45,9 @@ func TestAdminService_UpdateUser_LastAdmin(t *testing.T) {
 
 func TestAdminService_UpdateUser_GrantAdmin(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
-	other, _ := repo.Create(context.Background(), "other@test.com", "hash")
+	other, _ := repo.Create(context.Background(), "other@test.com", "hash", nil, nil)
 
 	svc := service.NewAdminService(repo)
 	updated, err := svc.UpdateUser(context.Background(), admin.ID, other.ID, boolPtr(true), nil)
@@ -61,9 +61,9 @@ func TestAdminService_UpdateUser_GrantAdmin(t *testing.T) {
 
 func TestAdminService_UpdateUser_VerifyEmail(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
-	other, _ := repo.Create(context.Background(), "other@test.com", "hash")
+	other, _ := repo.Create(context.Background(), "other@test.com", "hash", nil, nil)
 
 	svc := service.NewAdminService(repo)
 	updated, err := svc.UpdateUser(context.Background(), admin.ID, other.ID, nil, boolPtr(true))
@@ -77,7 +77,7 @@ func TestAdminService_UpdateUser_VerifyEmail(t *testing.T) {
 
 func TestAdminService_DeleteUser_Self(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
 
 	svc := service.NewAdminService(repo)
@@ -89,9 +89,9 @@ func TestAdminService_DeleteUser_Self(t *testing.T) {
 
 func TestAdminService_DeleteUser_LastAdmin(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
-	other, _ := repo.Create(context.Background(), "other@test.com", "hash")
+	other, _ := repo.Create(context.Background(), "other@test.com", "hash", nil, nil)
 	_ = other
 
 	svc := service.NewAdminService(repo)
@@ -104,9 +104,9 @@ func TestAdminService_DeleteUser_LastAdmin(t *testing.T) {
 
 func TestAdminService_DeleteUser_OK(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
-	other, _ := repo.Create(context.Background(), "other@test.com", "hash")
+	other, _ := repo.Create(context.Background(), "other@test.com", "hash", nil, nil)
 
 	svc := service.NewAdminService(repo)
 	if err := svc.DeleteUser(context.Background(), admin.ID, other.ID); err != nil {
@@ -120,8 +120,8 @@ func TestAdminService_DeleteUser_OK(t *testing.T) {
 
 func TestAdminService_ListUsers(t *testing.T) {
 	repo := newMockUserRepo()
-	repo.Create(context.Background(), "a@test.com", "hash")
-	repo.Create(context.Background(), "b@test.com", "hash")
+	repo.Create(context.Background(), "a@test.com", "hash", nil, nil)
+	repo.Create(context.Background(), "b@test.com", "hash", nil, nil)
 
 	svc := service.NewAdminService(repo)
 	users, total, err := svc.ListUsers(context.Background(), 20, 0)
@@ -148,7 +148,7 @@ func TestAdminService_ListUsers_LimitClamped(t *testing.T) {
 
 func TestAdminService_UpdateUser_NotFound(t *testing.T) {
 	repo := newMockUserRepo()
-	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash")
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
 	admin.IsAdmin = true
 
 	svc := service.NewAdminService(repo)

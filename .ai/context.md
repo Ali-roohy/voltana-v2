@@ -7,8 +7,8 @@
 ## Current State
 
 - **Date**: 2026-06-12
-- **Active Phase**: Phase 5 — **TASK-0001–0035 all DONE ✅** (35 tasks). TASK-0035 closed 2026-06-12.
-- **Current Sprint**: All tasks closed. Next Phase-5 candidates: Capacitor packaging, push notifications, catalog photos, OBD/ELM327, i18n.
+- **Active Phase**: Phase 5 — TASK-0001–0035 all DONE ✅. **TASK-0036 (Bug Batch, 8 bugs) + TASK-0037 (Feature Batch, 6 features) created READY** from the operator field-testing report (2026-06-12). Operator labeled them 0035/0036 but those collided with the existing TASK-0035 → renumbered.
+- **Current Sprint**: **TASK-0036 DONE ✅ CLOSED** (2026-06-12) — all 8 field-report bugs qa-repro'd → fixed → re-verified live (BUG-3 root cause: TanStack `["me"]` cache survived identity changes → new `lib/query-client.ts` clears on JWT-sub change; BUG-5: new `awaiting_bot` status + 15-min `otp:dlpending` marker fixes the 3-second deep-link kick-out; BUG-8: `/v1/admin/test-bot-connection` getMe proven live against the real Bale/Telegram bots). Next: TASK-0037 (FEAT-6 rate-snapshot last). Operator's Android-intent Auth.tsx WIP adopted + committed with BUG-5 (note: hardcodes package `com.bale.app` — verify on-device).
 
 ## Last Completed Tasks
 - TASK-0032 — VPS Setup & Deployment Guide + Local WSL Testing (**DONE ✅ CLOSED** 2026-06-11 — bundled with 0029/0031 in commit `a4cde5d`). Part A: local WSL smoke test runbook; Part B: VPS provisioning and HTTPS deployment guide using the TASK-0031 scripts. End-to-end operator guide from bare Ubuntu 24.04 → live HTTPS app.

@@ -31,13 +31,21 @@ func newMockUserRepo() *mockUserRepo {
 	}
 }
 
-func (m *mockUserRepo) Create(_ context.Context, email, passwordHash string) (*domain.User, error) {
+func (m *mockUserRepo) Create(_ context.Context, email, passwordHash string, fullName, phone *string) (*domain.User, error) {
 	if _, exists := m.byEmail[email]; exists {
 		return nil, repository.ErrEmailTaken
 	}
-	u := &domain.User{ID: uuid.New(), Email: email, PasswordHash: passwordHash}
+	if phone != nil {
+		if _, exists := m.byPhone[*phone]; exists {
+			return nil, repository.ErrPhoneTaken
+		}
+	}
+	u := &domain.User{ID: uuid.New(), Email: email, PasswordHash: passwordHash, FullName: fullName, Phone: phone}
 	m.byEmail[email] = u
 	m.byID[u.ID] = u
+	if phone != nil {
+		m.byPhone[*phone] = u
+	}
 	return u, nil
 }
 
@@ -343,7 +351,7 @@ func newTestServiceFull() (*service.AuthService, *mockUserRepo, *mockTokenStore,
 
 func mustRegister(t *testing.T, svc *service.AuthService, email, password string) *domain.User {
 	t.Helper()
-	u, err := svc.Register(context.Background(), email, password)
+	u, err := svc.Register(context.Background(), email, password, "", "")
 	if err != nil {
 		t.Fatalf("Register(%q): %v", email, err)
 	}
@@ -385,7 +393,7 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 	svc, _, _ := newTestService()
 	mustRegister(t, svc, "alice@example.com", "password123")
 
-	_, err := svc.Register(context.Background(), "alice@example.com", "other")
+	_, err := svc.Register(context.Background(), "alice@example.com", "other", "", "")
 	if !errors.Is(err, repository.ErrEmailTaken) {
 		t.Errorf("want ErrEmailTaken, got %v", err)
 	}
@@ -997,5 +1005,85 @@ func TestCompleteOTPRegister_SingleUse(t *testing.T) {
 	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil)
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid on replay, got %v", err)
+	}
+}
+
+// ── deep-link awaiting_bot status (TASK-0036 BUG-5) ───────────────────────────
+
+func TestDeepLinkOTP_AwaitingBotUntilBotResponds(t *testing.T) {
+	svc, _, store, _ := newTestServiceWithBale()
+	svc.SetSystemSettingsRepo(&mockSystemSettingsRepo{method: "deeplink"})
+	ctx := context.Background()
+
+	// Unregistered phone, register mode → deep-link info returned.
+	info, err := svc.RequestOTP(ctx, "09121234567", "1.2.3.4", service.PlatformBale, true)
+	if err != nil {
+		t.Fatalf("RequestOTP: %v", err)
+	}
+	if info == nil || info.BaleURL == "" {
+		t.Fatalf("want deep-link info with BaleURL, got %+v", info)
+	}
+
+	// Before the bot sees /start the poll must report awaiting_bot, NOT
+	// expired (the bug: first poll returned "expired" and kicked the user out).
+	status, err := svc.CheckContactShareStatus(ctx, "09121234567", service.PlatformBale)
+	if err != nil {
+		t.Fatalf("CheckContactShareStatus: %v", err)
+	}
+	if status != "awaiting_bot" {
+		t.Fatalf("status before bot interaction = %q, want awaiting_bot", status)
+	}
+
+	// Bot receives /start phone_<E164> → dispatches the code.
+	if err := svc.HandleDeepLinkOTP(ctx, "bale", "chat123", "+989121234567"); err != nil {
+		t.Fatalf("HandleDeepLinkOTP: %v", err)
+	}
+
+	status, _ = svc.CheckContactShareStatus(ctx, "09121234567", service.PlatformBale)
+	if status != "otp_sent" {
+		t.Fatalf("status after bot dispatch = %q, want otp_sent", status)
+	}
+
+	// Marker is consumed once the bot interaction happened.
+	if _, ok, _ := store.CacheGet(ctx, "otp:dlpending:bale:+989121234567"); ok {
+		t.Error("otp:dlpending marker should be deleted after bot dispatch")
+	}
+}
+
+// ── email registration persists full_name + phone (TASK-0036 BUG-1/2) ─────────
+
+func TestRegister_PersistsFullNameAndPhone(t *testing.T) {
+	svc, _, _ := newTestService()
+
+	u, err := svc.Register(context.Background(), "named@example.com", "password123", "  کاربر آزمایشی  ", "09121234567")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if u.FullName == nil || *u.FullName != "کاربر آزمایشی" {
+		t.Errorf("FullName = %v, want trimmed کاربر آزمایشی", u.FullName)
+	}
+	if u.Phone == nil || *u.Phone != "+989121234567" {
+		t.Errorf("Phone = %v, want normalized +989121234567", u.Phone)
+	}
+
+	// Duplicate phone on a second email registration → ErrPhoneTaken.
+	_, err = svc.Register(context.Background(), "other@example.com", "password123", "", "09121234567")
+	if !errors.Is(err, repository.ErrPhoneTaken) {
+		t.Errorf("want ErrPhoneTaken for duplicate phone, got %v", err)
+	}
+
+	// Invalid phone rejected.
+	_, err = svc.Register(context.Background(), "bad@example.com", "password123", "", "12")
+	if !errors.Is(err, service.ErrInvalidPhone) {
+		t.Errorf("want ErrInvalidPhone, got %v", err)
+	}
+
+	// Both fields optional.
+	u2, err := svc.Register(context.Background(), "plain@example.com", "password123", "", "")
+	if err != nil {
+		t.Fatalf("Register without name/phone: %v", err)
+	}
+	if u2.FullName != nil || u2.Phone != nil {
+		t.Errorf("want nil FullName/Phone when omitted, got %v / %v", u2.FullName, u2.Phone)
 	}
 }

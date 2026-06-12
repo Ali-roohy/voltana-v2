@@ -511,26 +511,35 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
   // the OTP. Timer hasn't started yet.
   const awaitingDeepLink = !!deepLinkUrl && !timerStarted;
 
+  const handleDeepLinkClick = () => {
+    if (!deepLinkUrl) return;
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid && platform === 'bale') {
+      // Android Intent scheme opens Bale directly; falls back to Play Store if not installed
+      window.location.href = deepLinkUrl.replace('https://', 'intent://') +
+        '#Intent;scheme=https;package=com.bale.app;end';
+    } else {
+      window.location.href = deepLinkUrl;
+    }
+  };
+
   return (
     <div className="space-y-4 pt-2">
       {deepLinkUrl ? (
         <div className="space-y-3">
           <p className="text-sm text-center text-muted-foreground">
-            روی دکمه زیر بزنید تا در {platformLabel} کد دریافت کنید:
+            روی دکمه زیر بزنید؛ ربات {platformLabel} باز می‌شود و کد برای شما ارسال می‌شود:
           </p>
-          <a href={deepLinkUrl} target="_blank" rel="noopener noreferrer" className="block">
-            <Button type="button" variant="outline" className="w-full gap-2">
-              📲 باز کردن {platformLabel} برای دریافت کد
-            </Button>
-          </a>
+          <Button type="button" variant="outline" className="w-full gap-2" onClick={handleDeepLinkClick}>
+            📲 باز کردن {platformLabel} برای دریافت کد
+          </Button>
           {awaitingDeepLink ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
-              <div className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-              <span>در انتظار ارسال کد از {platformLabel}...</span>
-            </div>
-          ) : (
             <p className="text-xs text-center text-muted-foreground">
-              بعد از دریافت کد در {platformLabel}، اینجا وارد کنید:
+              پس از باز کردن ربات، کد به‌صورت خودکار ارسال می‌شود
+            </p>
+          ) : (
+            <p className="text-xs text-center text-green-600 dark:text-green-400">
+              ✅ کد ارسال شد — کد ۶ رقمی را وارد کنید:
             </p>
           )}
         </div>
@@ -620,14 +629,14 @@ function EmailRegisterStep({ onBack, onPendingEmail }: EmailRegisterStepProps) {
     setLoading(true);
     try {
       const validated = signUpSchema.parse(signUpData);
-      await register(validated.email, validated.password);
+      await register(validated.email, validated.password, validated.full_name, validated.phone);
       onPendingEmail(validated.email);
       toast.success(t('auth.signupCheckEmail'));
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);
       } else if (error instanceof ApiError && error.status === 409) {
-        toast.error('این ایمیل قبلاً ثبت شده است');
+        toast.error(error.code === 'PHONE_TAKEN' ? 'این شماره قبلاً ثبت شده است' : 'این ایمیل قبلاً ثبت شده است');
       } else if (error instanceof ApiError) {
         toast.error(error.message || 'خطایی رخ داده است');
       } else {
