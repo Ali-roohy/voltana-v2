@@ -68,12 +68,13 @@ func sendMessage(ctx context.Context, baseURL, chatID, text string) error {
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/sendMessage", bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return sanitizeURLErr(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("bot sendMessage: %w", err)
+		// %v of the sanitized error — never wrap the raw *url.Error (token in URL).
+		return fmt.Errorf("bot sendMessage: %v", sanitizeURLErr(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

@@ -46,7 +46,7 @@ func ProbeBot(baseURL string) error {
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Get(baseURL + "/getMe")
 	if err != nil {
-		return err
+		return sanitizeURLErr(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -208,12 +208,12 @@ func (p *Poller) sendJSON(ctx context.Context, method string, body any) error {
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/"+method, bytes.NewReader(payload))
 	if err != nil {
-		return err
+		return sanitizeURLErr(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return sanitizeURLErr(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -253,12 +253,12 @@ func (p *Poller) getUpdates(ctx context.Context, offset int64) ([]update, error)
 	url := fmt.Sprintf("%s/getUpdates?offset=%d&timeout=30", p.baseURL, offset)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeURLErr(err)
 	}
 	client := &http.Client{Timeout: 35 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeURLErr(err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
