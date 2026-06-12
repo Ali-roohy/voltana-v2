@@ -1,4 +1,4 @@
-import { Home, Car, Zap, Map, Settings } from "lucide-react";
+import { Home, Car, BookOpen, Zap, Map, Settings } from "lucide-react";
 import { NavLink } from "./NavLink";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ export const BottomNav = () => {
   const navItems = [
     { to: "/", icon: Home, label: t("nav.dashboard") },
     { to: "/cars", icon: Car, label: t("nav.cars") },
+    { to: "/catalog", icon: BookOpen, label: t("nav.catalog") },
     { to: "/charging", icon: Zap, label: t("nav.charging") },
     { to: "/map", icon: Map, label: t("nav.map") },
     { to: "/settings", icon: Settings, label: t("nav.settings") },

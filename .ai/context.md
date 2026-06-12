@@ -6,9 +6,9 @@
 
 ## Current State
 
-- **Date**: 2026-06-11
-- **Active Phase**: **Phase 4 complete** — 32 tasks, all DONE. 1 commit unpushed (`6dc8973`).
-- **Current Sprint**: All tasks closed. Ready for Phase 5 planning (researcher/pm pass).
+- **Date**: 2026-06-12
+- **Active Phase**: Phase 4 — **TASK-0001–0033 all DONE ✅**. TASK-0033 closed 2026-06-12.
+- **Current Sprint**: All tasks closed. Phase 5 planning (researcher/pm pass) is next.
 
 ## Last Completed Tasks
 - TASK-0032 — VPS Setup & Deployment Guide + Local WSL Testing (**DONE ✅ CLOSED** 2026-06-11 — bundled with 0029/0031 in commit `a4cde5d`). Part A: local WSL smoke test runbook; Part B: VPS provisioning and HTTPS deployment guide using the TASK-0031 scripts. End-to-end operator guide from bare Ubuntu 24.04 → live HTTPS app.
@@ -154,10 +154,12 @@
 | TASK-0029 | developer | **DONE ✅ CLOSED** (2026-06-11) — Hybrid Auth Flow + Admin OTP Config. `POST /auth/login/phone`, stay_logged_in on all paths, `POST /v1/account/set-password`, `password_set` in `/v1/me`, migration 000013 `system_settings`, `GET/PUT /v1/admin/system-settings`, `GET /auth/otp/config`, deep-link OTP, bot `/start phone_<E164>`, admin OTP config UI. `go test ✓` (25 tests) · `tsc 0` · `npm build ✓` |
 | TASK-0031 | developer | **DONE ✅ CLOSED** (2026-06-11) — VPS Production Deployment (Phase 4). pg_dump backups, bind-mount postgres volume, Ubuntu 24.04 bootstrap, `.env.prod.example`, health check script, `DEPLOY_PRODUCTION.md`. |
 | TASK-0032 | developer | **DONE ✅ CLOSED** (2026-06-11) — WSL local smoke test guide + VPS provisioning guide. End-to-end operator runbook from bare Ubuntu 24.04 → HTTPS live app. |
+| TASK-0033 | developer | **DONE ✅ CLOSED with caveat** (2026-06-12 — dev_supervisor ✅ (1 finding fixed) + qa ✅ 9/9 live + qa_supervisor ✅). EV Car Catalog UI + Dynamic Theming: migration **000016** `ev_catalog` (23 cars × 43 cols from xlsx via stdlib converter `scripts/seed-ev-catalog.py`, round-trip clean); `GET /v1/cars/catalog` (authed, Redis `catalog:cars` TTL 1h, +3 service tests); `features/catalog/` (grid/list toggle, brand/body/segment/battery filters, range/accel/tier sort, detail Sheet w/ 6 spec sections + tabs, ColorPicker, ≤3-car comparison w/ best/worst highlight); `lib/dynamic-theme.ts` (Persian color name → warm/cool/neutral palette, persists `dynamic:<color>` under `voltana:theme`, ThemeContext restores, presets coexist); nav (BottomNav/Header/swipe) + lazy `/catalog` chunk (25 kB). `go test ✓` · `tsc 0` · `build ✓` · live: 401/200+23 cars/47 fields/TTL 3600. ⚠️ UI not clicked (no browser). |
 
 ## Current Focus
-- **All phases complete (Phase 1–4, 32 tasks DONE).** 1 commit unpushed: `6dc8973 fix: login with unregistered phone no longer starts OTP countdown`.
-- **Phase 5 planning** (researcher/pm pass) is next. Likely candidates: OBD/ELM327 BLE integration, Capacitor mobile packaging, CDN/asset caching, multi-tenant/fleet sharing, push notifications, internationalization (full i18n).
+- **All phases complete (Phase 1–4, 33 tasks DONE).** TASK-0033 (EV catalog + dynamic theming) closed 2026-06-12 with the standard no-browser caveat — retire with an operator browser pass (grid/list, filters, drawer, color→theme live + reload persistence, compare highlighting, mobile).
+- **Working-tree note (2026-06-12):** uncommitted operator WIP in `voltana-web/src/pages/Auth.tsx` (Android intent deep-link for Bale) was deliberately **excluded** from the TASK-0033 commit; stray empty files `qa`/`super_dev` at repo root left untracked; `.claude/` added to `.gitignore`.
+- **Phase 5 planning** (researcher/pm pass) is next. Likely candidates: OBD/ELM327 BLE integration, Capacitor mobile packaging, CDN/asset caching, multi-tenant/fleet sharing, push notifications, internationalization (full i18n). Catalog follow-ups: real car photos for `img_url`, public (unauthed) catalog decision, ev_models↔ev_catalog relationship.
 
 ## Phase 3 Summary (2026-06-02 → 2026-06-04)
 Phase 3 delivered: TASK-0013 (map+stations) · 0014 (infra hardening) · 0015 (GitHub governance) · 0016 (admin UI) · 0017 (OTP/Bale bot) · 0018 (odometer) · 0019 (themes) · 0020 (fonts) · 0021 (currency) · 0022 (efficiency chart) · 0023 (total_km fix) · 0024 (session close button) · 0025 (VPS deployment). Also: bot poller exponential backoff + Telegram IPv4 fix + nginx static SPA serving + post-commit dashboard auto-sync hook.

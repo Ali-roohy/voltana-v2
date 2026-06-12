@@ -26,6 +26,7 @@ import { BottomNav } from "./components/BottomNav";
 const MapPage = lazy(() => import("./pages/Map"));
 const AdminStations = lazy(() => import("./pages/AdminStations"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const CatalogPage = lazy(() => import("./features/catalog/CatalogPage"));
 
 const MapFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground text-sm">
@@ -46,7 +47,7 @@ const SwipeableRoutes = () => {
   const location = useLocation();
   const startX = useRef(0);
 
-  const routes = ["/", "/cars", "/charging", "/map", "/settings"];
+  const routes = ["/", "/cars", "/catalog", "/charging", "/map", "/settings"];
   const currentIndex = routes.indexOf(location.pathname);
 
   const handleDragEnd = (_: any, info: { offset: { x: number } }) => {
@@ -72,6 +73,14 @@ const SwipeableRoutes = () => {
           <Route path="/auth" element={<Auth />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/cars" element={<Cars />} />
+          <Route
+            path="/catalog"
+            element={
+              <Suspense fallback={<AdminFallback />}>
+                <CatalogPage />
+              </Suspense>
+            }
+          />
           <Route path="/charging" element={<Charging />} />
           <Route path="/map" element={<Suspense fallback={<MapFallback />}><MapPage /></Suspense>} />
           <Route path="/settings" element={<Settings />} />

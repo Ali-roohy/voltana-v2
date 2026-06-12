@@ -20,7 +20,9 @@ export interface Theme {
 }
 
 // The full set of vars any theme may override — cleared before every switch.
-const OVERRIDEABLE_VARS = [
+// Exported so the dynamic car-color theme (lib/dynamic-theme.ts) clears the
+// exact same set when taking over / handing back.
+export const OVERRIDEABLE_VARS = [
   '--primary',
   '--primary-foreground',
   '--primary-glow',

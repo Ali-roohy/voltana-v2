@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Settings, Car, ChevronDown, Shield, Users } from "lucide-react";
+import { Settings, Car, ChevronDown, Shield, Users, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -94,6 +94,9 @@ export const Header = () => {
           )}
           <Button variant="ghost" size="icon" onClick={() => navigate("/cars")} title={language === "fa" ? "خودروهای من" : "My Cars"} className="h-8 w-8 sm:h-10 sm:w-10">
             <Car className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => navigate("/catalog")} title={language === "fa" ? "کاتالوگ خودروها" : "EV Catalog"} className="h-8 w-8 sm:h-10 sm:w-10">
+            <BookOpen className="h-4 w-4 sm:h-5 sm:w-5" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate("/settings")} title={language === "fa" ? "تنظیمات" : "Settings"} className="h-8 w-8 sm:h-10 sm:w-10">
             <Settings className="h-4 w-4 sm:h-5 sm:w-5" />

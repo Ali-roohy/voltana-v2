@@ -59,6 +59,7 @@ func main() {
 	settingsRepo := repository.NewSettingsRepository(db)
 	batteryRepo  := repository.NewBatteryRepository(db)
 	stationRepo  := repository.NewStationRepository(db)
+	catalogRepo  := repository.NewCatalogRepository(db)
 	sysSettingsRepo := repository.NewSystemSettingsRepository(db)
 
 	// ── Mailer ────────────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ func main() {
 	settingsSvc := service.NewSettingsService(settingsRepo, carRepo)
 	analyticsSvc := service.NewAnalyticsService(carRepo, evModelRepo, chargingRepo, batteryRepo, tokenStore)
 	stationSvc  := service.NewStationService(stationRepo)
+	catalogSvc  := service.NewCatalogService(catalogRepo, tokenStore)
 
 	chargingSvc.SetHealthRecomputer(analyticsSvc)
 
@@ -141,6 +143,7 @@ func main() {
 	settingsH  := handler.NewSettingsHandler(settingsSvc)
 	analyticsH := handler.NewAnalyticsHandler(analyticsSvc)
 	stationH   := handler.NewStationHandler(stationSvc)
+	catalogH   := handler.NewCatalogHandler(catalogSvc)
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := gin.New()
@@ -179,6 +182,7 @@ func main() {
 
 		v1.GET("/cars", carH.List)
 		v1.POST("/cars", carH.Create)
+		v1.GET("/cars/catalog", catalogH.List)
 		v1.GET("/cars/:id", carH.Get)
 		v1.PUT("/cars/:id", carH.Update)
 		v1.DELETE("/cars/:id", carH.Delete)

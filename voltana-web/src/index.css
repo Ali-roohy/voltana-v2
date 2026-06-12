@@ -114,3 +114,14 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* TASK-0033 — briefly added by lib/dynamic-theme.ts while the car-color theme
+   swaps CSS variables, so the palette eases in instead of snapping. */
+html.theme-transition,
+html.theme-transition * {
+  transition:
+    background-color 0.5s ease,
+    color 0.5s ease,
+    border-color 0.5s ease,
+    box-shadow 0.5s ease !important;
+}
