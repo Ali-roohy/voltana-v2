@@ -121,11 +121,11 @@ func main() {
 	}
 
 	// ── Other services ────────────────────────────────────────────────────────
-	carSvc      := service.NewCarService(carRepo)
+	carSvc      := service.NewCarService(carRepo, catalogRepo)
 	evModelSvc  := service.NewEVModelService(evModelRepo)
 	chargingSvc := service.NewChargingService(chargingRepo, carRepo, settingsRepo)
 	settingsSvc := service.NewSettingsService(settingsRepo, carRepo)
-	analyticsSvc := service.NewAnalyticsService(carRepo, evModelRepo, chargingRepo, batteryRepo, tokenStore)
+	analyticsSvc := service.NewAnalyticsService(carRepo, evModelRepo, catalogRepo, chargingRepo, batteryRepo, tokenStore)
 	stationSvc  := service.NewStationService(stationRepo)
 	catalogSvc  := service.NewCatalogService(catalogRepo, tokenStore)
 

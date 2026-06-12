@@ -147,7 +147,7 @@ func newAnalyticsSvc(t *testing.T, owner uuid.UUID, capacity *float64, chemistry
 
 	chRepo := newMockChargingRepo()
 	batRepo := newMockBatteryRepo()
-	svc := service.NewAnalyticsService(carRepo, evRepo, chRepo, batRepo, newMockCache())
+	svc := service.NewAnalyticsService(carRepo, evRepo, &mockCatalogRepo{}, chRepo, batRepo, newMockCache())
 	return svc, car.ID, chRepo, batRepo
 }
 
@@ -158,7 +158,7 @@ func newDashboardSvc(t *testing.T) (*service.AnalyticsService, *mockCarRepo, *mo
 	carRepo := newMockCarRepo()
 	chRepo := newMockChargingRepo()
 	cache := newMockCache()
-	svc := service.NewAnalyticsService(carRepo, newMockEVRepo(), chRepo, newMockBatteryRepo(), cache)
+	svc := service.NewAnalyticsService(carRepo, newMockEVRepo(), &mockCatalogRepo{}, chRepo, newMockBatteryRepo(), cache)
 	return svc, carRepo, chRepo, cache
 }
 

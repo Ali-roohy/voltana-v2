@@ -30,7 +30,8 @@ func (m *mockCarRepo) Create(_ context.Context, userID uuid.UUID, in repository.
 		return nil, repository.ErrInvalidEVModel
 	}
 	c := domain.Car{ID: uuid.New(), UserID: userID, Name: in.Name, LicensePlate: in.LicensePlate,
-		OdometerKM: in.OdometerKM, EVModelID: in.EVModelID}
+		OdometerKM: in.OdometerKM, EVModelID: in.EVModelID,
+		CatalogCarID: in.CatalogCarID, SpecOverrides: in.SpecOverrides}
 	m.store[c.ID] = c
 	return &c, nil
 }
@@ -63,6 +64,7 @@ func (m *mockCarRepo) Update(_ context.Context, userID, id uuid.UUID, in reposit
 		return nil, repository.ErrInvalidEVModel
 	}
 	c.Name, c.OdometerKM, c.LicensePlate, c.EVModelID = in.Name, in.OdometerKM, in.LicensePlate, in.EVModelID
+	c.CatalogCarID, c.SpecOverrides = in.CatalogCarID, in.SpecOverrides
 	m.store[id] = c
 	return &c, nil
 }
@@ -79,7 +81,7 @@ func (m *mockCarRepo) Delete(_ context.Context, userID, id uuid.UUID) error {
 // ── tests ───────────────────────────────────────────────────────────────────
 
 func TestCar_CreateSuccess(t *testing.T) {
-	svc := service.NewCarService(newMockCarRepo())
+	svc := service.NewCarService(newMockCarRepo(), &mockCatalogRepo{})
 	uid := uuid.New()
 	car, err := svc.Create(context.Background(), uid, repository.CarInput{Name: "  Daily  ", OdometerKM: 100})
 	if err != nil {
@@ -94,7 +96,7 @@ func TestCar_CreateSuccess(t *testing.T) {
 }
 
 func TestCar_CreateValidation(t *testing.T) {
-	svc := service.NewCarService(newMockCarRepo())
+	svc := service.NewCarService(newMockCarRepo(), &mockCatalogRepo{})
 	cases := []repository.CarInput{
 		{Name: ""},                                   // empty name
 		{Name: "ok", OdometerKM: -1},                 // negative odometer
@@ -110,7 +112,7 @@ func TestCar_CreateValidation(t *testing.T) {
 func TestCar_CreateInvalidEVModel(t *testing.T) {
 	repo := newMockCarRepo()
 	repo.invalidEV = true
-	svc := service.NewCarService(repo)
+	svc := service.NewCarService(repo, &mockCatalogRepo{})
 	evID := uuid.New()
 	_, err := svc.Create(context.Background(), uuid.New(), repository.CarInput{Name: "x", EVModelID: &evID})
 	if !errors.Is(err, service.ErrInvalidEVModelRef) {
@@ -120,7 +122,7 @@ func TestCar_CreateInvalidEVModel(t *testing.T) {
 
 func TestCar_OwnershipIsolation(t *testing.T) {
 	repo := newMockCarRepo()
-	svc := service.NewCarService(repo)
+	svc := service.NewCarService(repo, &mockCatalogRepo{})
 	owner, attacker := uuid.New(), uuid.New()
 
 	car, err := svc.Create(context.Background(), owner, repository.CarInput{Name: "Owned"})
@@ -147,7 +149,7 @@ func TestCar_OwnershipIsolation(t *testing.T) {
 
 func TestCar_PaginationClamp(t *testing.T) {
 	repo := newMockCarRepo()
-	svc := service.NewCarService(repo)
+	svc := service.NewCarService(repo, &mockCatalogRepo{})
 	uid := uuid.New()
 
 	if _, _, err := svc.List(context.Background(), uid, 1000, -5); err != nil {

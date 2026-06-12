@@ -1,8 +1,16 @@
 import { api } from "@/lib/api";
 
+// spec_overrides (TASK-0034) is the user's diff from the linked catalog car —
+// echoed verbatim by the API; merge with the catalog entry client-side.
+// PUT /v1/cars/:id is FULL-REPLACE: always send catalog_car_id+spec_overrides
+// back on edit or they get wiped.
+export type SpecOverrides = Record<string, string | number>;
+
 export interface Car {
   id: string;
   ev_model_id: string | null;
+  catalog_car_id: string | null;
+  spec_overrides: SpecOverrides;
   name: string;
   license_plate: string | null;
   odometer_km: number;
@@ -13,6 +21,8 @@ export interface Car {
 export interface CarInput {
   name: string;
   ev_model_id?: string | null;
+  catalog_car_id?: string | null;
+  spec_overrides?: SpecOverrides;
   license_plate?: string | null;
   odometer_km?: number;
 }

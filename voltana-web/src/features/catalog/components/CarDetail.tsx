@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { CarFront } from "lucide-react";
+import { CarFront, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +10,7 @@ import type { CatalogCar } from "../api";
 import { fmt, text } from "../format";
 import { CarComparison } from "./CarComparison";
 import { ColorPicker } from "./ColorPicker";
+import { CustomizeCarModal } from "./CustomizeCarModal";
 
 interface CarDetailProps {
   car: CatalogCar | null;
@@ -102,6 +104,7 @@ function sections(car: CatalogCar): SpecSection[] {
 
 export const CarDetail = ({ car, allCars, compareIds, onToggleCompare, onClose }: CarDetailProps) => {
   const [selectedColor, setSelectedColor] = useState<string | null>(getSavedDynamicColor());
+  const [customizeOpen, setCustomizeOpen] = useState(false);
 
   if (!car) return null;
 
@@ -133,6 +136,17 @@ export const CarDetail = ({ car, allCars, compareIds, onToggleCompare, onClose }
             <Badge variant="secondary">{text(car.adas_level)} ADAS</Badge>
           </div>
         </div>
+
+        {/* add-to-my-cars (TASK-0034) — pinned under the banner, visible on every tab */}
+        <div className="px-4 pt-3">
+          <Button className="w-full" onClick={() => setCustomizeOpen(true)}>
+            <Plus className="ml-2 h-4 w-4" />
+            اضافه کردن به خودروهای من
+          </Button>
+        </div>
+        {customizeOpen && (
+          <CustomizeCarModal car={car} open={customizeOpen} onOpenChange={setCustomizeOpen} />
+        )}
 
         <Tabs defaultValue="specs" className="p-4">
           <TabsList className="grid w-full grid-cols-4">

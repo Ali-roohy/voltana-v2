@@ -22,15 +22,20 @@ func NewCarHandler(cars *service.CarService) *CarHandler {
 	return &CarHandler{cars: cars}
 }
 
+// name is omitempty (not required): when catalog_car_id is present the service
+// defaults it to the catalog's name_fa; a blank name WITHOUT a catalog link is
+// still rejected by the service-level validation.
 type carRequest struct {
-	Name         string  `json:"name"          binding:"required,max=255"`
-	EVModelID    *string `json:"ev_model_id"   binding:"omitempty,uuid"`
-	LicensePlate *string `json:"license_plate" binding:"omitempty,max=50"`
-	OdometerKM   *int    `json:"odometer_km"   binding:"omitempty,min=0"`
+	Name          string         `json:"name"           binding:"omitempty,max=255"`
+	EVModelID     *string        `json:"ev_model_id"    binding:"omitempty,uuid"`
+	CatalogCarID  *string        `json:"catalog_car_id" binding:"omitempty,uuid"`
+	SpecOverrides map[string]any `json:"spec_overrides"`
+	LicensePlate  *string        `json:"license_plate"  binding:"omitempty,max=50"`
+	OdometerKM    *int           `json:"odometer_km"    binding:"omitempty,min=0"`
 }
 
 func (req carRequest) toInput() repository.CarInput {
-	in := repository.CarInput{Name: req.Name, LicensePlate: req.LicensePlate}
+	in := repository.CarInput{Name: req.Name, LicensePlate: req.LicensePlate, SpecOverrides: req.SpecOverrides}
 	if req.OdometerKM != nil {
 		in.OdometerKM = *req.OdometerKM
 	}
@@ -38,6 +43,10 @@ func (req carRequest) toInput() repository.CarInput {
 		// already validated as a UUID by binding
 		id := uuid.MustParse(*req.EVModelID)
 		in.EVModelID = &id
+	}
+	if req.CatalogCarID != nil {
+		id := uuid.MustParse(*req.CatalogCarID)
+		in.CatalogCarID = &id
 	}
 	return in
 }
@@ -136,8 +145,12 @@ func handleCarError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrValidation):
 		apiError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+	case errors.Is(err, service.ErrInvalidOverride):
+		apiError(c, http.StatusBadRequest, "INVALID_OVERRIDE_KEY", err.Error())
 	case errors.Is(err, service.ErrInvalidEVModelRef):
 		apiError(c, http.StatusUnprocessableEntity, "INVALID_EV_MODEL", "ev_model_id does not reference an existing model")
+	case errors.Is(err, service.ErrInvalidCatalogCar):
+		apiError(c, http.StatusUnprocessableEntity, "INVALID_CATALOG_CAR", "catalog_car_id does not reference a catalog car")
 	case errors.Is(err, service.ErrCarNotFound):
 		apiError(c, http.StatusNotFound, "NOT_FOUND", "car not found")
 	default:

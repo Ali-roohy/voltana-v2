@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"voltana-api/internal/domain"
+	"voltana-api/internal/repository"
 	"voltana-api/internal/service"
 
 	"github.com/google/uuid"
@@ -29,6 +30,20 @@ func (m *mockCatalogRepo) ListCatalog(_ context.Context) ([]domain.CatalogCar, e
 		return nil, m.err
 	}
 	return m.items, nil
+}
+
+func (m *mockCatalogRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.CatalogCar, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	for i := range m.items {
+		if m.items[i].ID == id {
+			return &m.items[i], nil
+		}
+	}
+	return nil, repository.ErrNotFound
 }
 
 func catalogFixture(n int) []domain.CatalogCar {

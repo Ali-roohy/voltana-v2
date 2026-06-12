@@ -61,6 +61,7 @@ type BatteryHealthResult struct {
 type AnalyticsService struct {
 	cars     repository.CarRepository
 	evModels repository.EVModelRepository
+	catalog  repository.CatalogRepository
 	sessions repository.ChargingRepository
 	battery  repository.BatteryRepository
 	cache    CacheStore
@@ -76,6 +77,7 @@ type AnalyticsService struct {
 func NewAnalyticsService(
 	cars repository.CarRepository,
 	evModels repository.EVModelRepository,
+	catalog repository.CatalogRepository,
 	sessions repository.ChargingRepository,
 	battery repository.BatteryRepository,
 	cache CacheStore,
@@ -83,6 +85,7 @@ func NewAnalyticsService(
 	return &AnalyticsService{
 		cars:     cars,
 		evModels: evModels,
+		catalog:  catalog,
 		sessions: sessions,
 		battery:  battery,
 		cache:    cache,
@@ -308,7 +311,18 @@ func (s *AnalyticsService) ownedCar(ctx context.Context, userID, carID uuid.UUID
 	return car, nil
 }
 
+// nominalCapacity resolves the nameplate pack size (TASK-0034 fallback chain):
+// user spec override → linked catalog car → linked ev_model.
 func (s *AnalyticsService) nominalCapacity(ctx context.Context, car *domain.Car) (float64, bool) {
+	if v, ok := car.SpecOverrides["battery_capacity_kwh"].(float64); ok && v > 0 {
+		return v, true
+	}
+	if car.CatalogCarID != nil {
+		cat, err := s.catalog.GetByID(ctx, *car.CatalogCarID)
+		if err == nil && cat.BatteryCapacityKWh != nil && *cat.BatteryCapacityKWh > 0 {
+			return *cat.BatteryCapacityKWh, true
+		}
+	}
 	if car.EVModelID == nil {
 		return 0, false
 	}
@@ -319,7 +333,18 @@ func (s *AnalyticsService) nominalCapacity(ctx context.Context, car *domain.Car)
 	return *model.BatteryCapacityKWh, true
 }
 
+// chemistryOf resolves cell chemistry with the same override → catalog →
+// ev_model order as nominalCapacity.
 func (s *AnalyticsService) chemistryOf(ctx context.Context, car *domain.Car) *string {
+	if v, ok := car.SpecOverrides["cell_type"].(string); ok && v != "" {
+		return &v
+	}
+	if car.CatalogCarID != nil {
+		cat, err := s.catalog.GetByID(ctx, *car.CatalogCarID)
+		if err == nil && cat.CellType != nil && *cat.CellType != "" {
+			return cat.CellType
+		}
+	}
 	if car.EVModelID == nil {
 		return nil
 	}

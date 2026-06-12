@@ -7,7 +7,7 @@
 ## Current State
 
 - **Date**: 2026-06-12
-- **Active Phase**: Phase 4 — **TASK-0001–0033 all DONE ✅**. TASK-0033 closed 2026-06-12.
+- **Active Phase**: Phase 4 — **TASK-0001–0034 all DONE ✅** (34 tasks). TASK-0034 closed 2026-06-12.
 - **Current Sprint**: All tasks closed. Phase 5 planning (researcher/pm pass) is next.
 
 ## Last Completed Tasks
@@ -157,7 +157,9 @@
 | TASK-0033 | developer | **DONE ✅ CLOSED with caveat** (2026-06-12 — dev_supervisor ✅ (1 finding fixed) + qa ✅ 9/9 live + qa_supervisor ✅). EV Car Catalog UI + Dynamic Theming: migration **000016** `ev_catalog` (23 cars × 43 cols from xlsx via stdlib converter `scripts/seed-ev-catalog.py`, round-trip clean); `GET /v1/cars/catalog` (authed, Redis `catalog:cars` TTL 1h, +3 service tests); `features/catalog/` (grid/list toggle, brand/body/segment/battery filters, range/accel/tier sort, detail Sheet w/ 6 spec sections + tabs, ColorPicker, ≤3-car comparison w/ best/worst highlight); `lib/dynamic-theme.ts` (Persian color name → warm/cool/neutral palette, persists `dynamic:<color>` under `voltana:theme`, ThemeContext restores, presets coexist); nav (BottomNav/Header/swipe) + lazy `/catalog` chunk (25 kB). `go test ✓` · `tsc 0` · `build ✓` · live: 401/200+23 cars/47 fields/TTL 3600. ⚠️ UI not clicked (no browser). |
 
 ## Current Focus
-- **All phases complete (Phase 1–4, 33 tasks DONE).** TASK-0033 (EV catalog + dynamic theming) closed 2026-06-12 with the standard no-browser caveat — retire with an operator browser pass (grid/list, filters, drawer, color→theme live + reload persistence, compare highlighting, mobile).
+- **All phases complete (Phase 1–4, 34 tasks DONE).** Phase 5 planning (researcher/pm pass) is next.
+- **TASK-0034 — DONE ✅ CLOSED with caveat** (2026-06-12 — dev_supervisor ✅ + qa ✅ 10/10 live + qa_supervisor ✅). Add EV from Catalog to My Cars: migration **000017** (`cars.catalog_car_id` FK SET NULL + `spec_overrides JSONB` diff-only, round-trip clean); POST/PUT `/v1/cars` extended (name defaults to catalog `name_fa`; 422 `INVALID_CATALOG_CAR`; 400 `INVALID_OVERRIDE_KEY`; whitelist 43 keys + colors, typed, capacity/range > 0); `CatalogRepository.GetByID`; **analytics fallback chain** override→catalog→ev_model for capacity AND chemistry (+9 tests); `CustomizeCarModal` (43 fields/6 sections via `features/catalog/fields.ts`, constrained ColorPickers, diff-only save), CarDetail button «اضافه کردن به خودروهای من», `/cars` catalog badge + effective battery + PUT round-trip guard. Live: SOH nominal=60 from override (catalog 84.8), chemistry NMC from catalog, legacy path unchanged. ⚠️ UI not clicked (no browser) — same operator browser pass as TASK-0033.
+- TASK-0033 (EV catalog + dynamic theming) closed 2026-06-12 with the standard no-browser caveat — retire with an operator browser pass (grid/list, filters, drawer, color→theme live + reload persistence, compare highlighting, mobile).
 - **Working-tree note (2026-06-12):** uncommitted operator WIP in `voltana-web/src/pages/Auth.tsx` (Android intent deep-link for Bale) was deliberately **excluded** from the TASK-0033 commit; stray empty files `qa`/`super_dev` at repo root left untracked; `.claude/` added to `.gitignore`.
 - **Phase 5 planning** (researcher/pm pass) is next. Likely candidates: OBD/ELM327 BLE integration, Capacitor mobile packaging, CDN/asset caching, multi-tenant/fleet sharing, push notifications, internationalization (full i18n). Catalog follow-ups: real car photos for `img_url`, public (unauthed) catalog decision, ev_models↔ev_catalog relationship.
 

@@ -6,6 +6,7 @@ import (
 	"voltana-api/internal/domain"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -13,6 +14,7 @@ import (
 // CatalogRepository is read-only access to the rich EV catalog (TASK-0033).
 type CatalogRepository interface {
 	ListCatalog(ctx context.Context) ([]domain.CatalogCar, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.CatalogCar, error)
 }
 
 type pgxCatalogRepository struct {
@@ -35,6 +37,22 @@ const catalogCols = `id, name_fa, name_en, brand, body_style_fa, class, body_typ
 	camera_count, weight_kg, trunk_liters, notes, exterior_colors, interior_colors,
 	img_url, created_at, updated_at`
 
+func (r *pgxCatalogRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.CatalogCar, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+catalogCols+` FROM ev_catalog WHERE id = $1`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items, err := collectCatalogRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, ErrNotFound
+	}
+	return &items[0], nil
+}
+
 func (r *pgxCatalogRepository) ListCatalog(ctx context.Context) ([]domain.CatalogCar, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT `+catalogCols+` FROM ev_catalog ORDER BY brand NULLS LAST, name_en`)
@@ -42,7 +60,10 @@ func (r *pgxCatalogRepository) ListCatalog(ctx context.Context) ([]domain.Catalo
 		return nil, err
 	}
 	defer rows.Close()
+	return collectCatalogRows(rows)
+}
 
+func collectCatalogRows(rows pgx.Rows) ([]domain.CatalogCar, error) {
 	items := make([]domain.CatalogCar, 0)
 	for rows.Next() {
 		m := domain.CatalogCar{}

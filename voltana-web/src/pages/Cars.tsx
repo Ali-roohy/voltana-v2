@@ -30,8 +30,16 @@ import type { Car, CarInput } from "@/features/cars/api";
 import { useEVModels } from "@/features/ev-models/hooks";
 import type { EVModel } from "@/features/ev-models/api";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
+import { useCatalog } from "@/features/catalog/hooks";
 
-const emptyForm: CarInput = { name: "", ev_model_id: "", license_plate: "", odometer_km: 0 };
+const emptyForm: CarInput = {
+  name: "",
+  ev_model_id: "",
+  license_plate: "",
+  odometer_km: 0,
+  catalog_car_id: null,
+  spec_overrides: {},
+};
 
 export default function Cars() {
   const { t, i18n } = useTranslation();
@@ -60,6 +68,13 @@ export default function Cars() {
   const modelById = useMemo(
     () => new Map(evModels.map((m) => [m.id, m] as const)),
     [evModels],
+  );
+
+  // Catalog lookup for catalog-linked cars (TASK-0034).
+  const { data: catalogCars = [] } = useCatalog();
+  const catalogById = useMemo(
+    () => new Map(catalogCars.map((c) => [c.id, c] as const)),
+    [catalogCars],
   );
 
   const filteredModels = useMemo<EVModel[]>(() => {
@@ -93,6 +108,10 @@ export default function Cars() {
       ev_model_id: formData.ev_model_id || null,
       license_plate: formData.license_plate?.trim() || null,
       odometer_km: Number(formData.odometer_km) || 0,
+      // PUT is full-replace — losing these would unlink the catalog car and
+      // wipe the user's customizations (TASK-0034).
+      catalog_car_id: formData.catalog_car_id || null,
+      spec_overrides: formData.spec_overrides ?? {},
     };
     try {
       if (editingCar) {
@@ -115,6 +134,8 @@ export default function Cars() {
       ev_model_id: car.ev_model_id || "",
       license_plate: car.license_plate || "",
       odometer_km: car.odometer_km,
+      catalog_car_id: car.catalog_car_id,
+      spec_overrides: car.spec_overrides ?? {},
     });
     setIsDialogOpen(true);
   };
@@ -259,6 +280,13 @@ export default function Cars() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {cars.map((car) => {
             const model = car.ev_model_id ? modelById.get(car.ev_model_id) : undefined;
+            const catalogCar = car.catalog_car_id ? catalogById.get(car.catalog_car_id) : undefined;
+            // effective battery: user override → catalog → ev_model (mirrors the API's SOH chain)
+            const overrideKwh = car.spec_overrides?.battery_capacity_kwh;
+            const batteryKwh =
+              typeof overrideKwh === "number"
+                ? overrideKwh
+                : catalogCar?.battery_capacity_kwh ?? model?.battery_capacity_kwh ?? null;
             return (
               <Card
                 key={car.id}
@@ -277,7 +305,18 @@ export default function Cars() {
                       <div className="min-w-0">
                         <CardTitle className="text-base sm:text-lg truncate">{car.name}</CardTitle>
                         <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                          {model ? (isRTL ? model.name_fa : model.name_en) : "—"}
+                          {catalogCar ? (
+                            <>
+                              {isRTL ? catalogCar.name_fa : catalogCar.name_en}
+                              <span className="mr-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                                کاتالوگ
+                              </span>
+                            </>
+                          ) : model ? (
+                            isRTL ? model.name_fa : model.name_en
+                          ) : (
+                            "—"
+                          )}
                         </p>
                       </div>
                     </div>
@@ -306,10 +345,10 @@ export default function Cars() {
                       <span className="text-muted-foreground">{labels.odometer}:</span>
                       <span className="font-medium">{car.odometer_km.toLocaleString()} km</span>
                     </div>
-                    {model?.battery_capacity_kwh != null && (
+                    {batteryKwh != null && (
                       <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-muted-foreground">{t("cars.batteryCapacity")}:</span>
-                        <span className="font-medium">{model.battery_capacity_kwh} kWh</span>
+                        <span className="font-medium">{batteryKwh} kWh</span>
                       </div>
                     )}
                   </div>
