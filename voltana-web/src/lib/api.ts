@@ -99,5 +99,5 @@ export const api = {
   get: <T>(path: string) => apiFetch<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) => apiFetch<T>(path, { method: "POST", body }),
   put: <T>(path: string, body?: unknown) => apiFetch<T>(path, { method: "PUT", body }),
-  del: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+  del: <T>(path: string, body?: unknown) => apiFetch<T>(path, { method: "DELETE", body }),
 };

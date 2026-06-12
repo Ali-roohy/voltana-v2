@@ -62,6 +62,8 @@ services:
       BALE_BOT_USERNAME: ${BALE_BOT_USERNAME:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
     # Force IPv4 for Telegram — Docker resolves the AAAA record by default and
     # the IPv6 path is unreachable/filtered in this environment.
     extra_hosts:

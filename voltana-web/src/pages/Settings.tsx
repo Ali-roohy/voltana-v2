@@ -10,6 +10,7 @@ import { ArrowLeft, Zap, Palette, Download } from "lucide-react";
 import { usePWAInstall } from "@/lib/pwa-install";
 import { BackgroundPicker } from "@/features/settings/BackgroundPicker";
 import { BackupRestoreCard } from "@/features/settings/BackupRestoreCard";
+import { NotificationsCard } from "@/features/settings/NotificationsCard";
 import { DeleteAccountCard } from "@/features/settings/DeleteAccountCard";
 import { AdminOTPPanel } from "@/features/settings/AdminOTPPanel";
 import { AdminSystemSettings } from "@/features/settings/AdminSystemSettings";
@@ -342,6 +343,9 @@ export default function Settings() {
 
           {/* Admin system settings — OTP delivery method */}
           {me?.is_admin && <AdminSystemSettings />}
+
+          {/* Notifications (TASK-0039) */}
+          <NotificationsCard isAdmin={!!me?.is_admin} />
 
           {/* Backup & restore (FEAT-4) — end of Settings */}
           <BackupRestoreCard />
