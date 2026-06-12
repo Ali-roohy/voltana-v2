@@ -21,14 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Car as CarIcon, Search, Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Pencil, Trash2, Car as CarIcon, Search, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/Header";
 import { useCars, useCreateCar, useUpdateCar, useDeleteCar } from "@/features/cars/hooks";
 import type { Car, CarInput } from "@/features/cars/api";
 import { useEVModels } from "@/features/ev-models/hooks";
-import type { EVModel } from "@/features/ev-models/api";
+import type { CatalogCar } from "@/features/catalog/api";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
 import { useCatalog } from "@/features/catalog/hooks";
 
@@ -42,6 +43,7 @@ const emptyForm: CarInput = {
 };
 
 export default function Cars() {
+  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === "fa";
   const labels = {
@@ -77,19 +79,24 @@ export default function Cars() {
     [catalogCars],
   );
 
-  const filteredModels = useMemo<EVModel[]>(() => {
+  // TASK-0035: new cars link to the rich ev_catalog, not ev_models. The picker
+  // searches the 23 cached catalog cars client-side (fa/en/brand).
+  const filteredCatalog = useMemo<CatalogCar[]>(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return evModels.filter(
-      (m) => m.name_fa.toLowerCase().includes(q) || m.name_en.toLowerCase().includes(q),
+    return catalogCars.filter(
+      (c) =>
+        c.name_fa.toLowerCase().includes(q) ||
+        c.name_en.toLowerCase().includes(q) ||
+        (c.brand ?? "").toLowerCase().includes(q),
     );
-  }, [searchQuery, evModels]);
+  }, [searchQuery, catalogCars]);
 
-  const handleSelectModel = (model: EVModel) => {
+  const handleSelectCatalogCar = (catalogCar: CatalogCar) => {
     setFormData((prev) => ({
       ...prev,
-      ev_model_id: model.id,
-      name: prev.name?.trim() ? prev.name : model.name_en,
+      catalog_car_id: catalogCar.id,
+      name: prev.name?.trim() ? prev.name : catalogCar.name_fa,
     }));
     setSearchQuery("");
   };
@@ -189,38 +196,49 @@ export default function Cars() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {!editingCar && (
                   <div className="space-y-2">
-                    <Label>{t("cars.searchModel")}</Label>
+                    <Label>{isRTL ? "جستجو در کاتالوگ" : "Search the catalog"}</Label>
                     <div className="relative">
                       <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder={t("cars.searchModel")}
+                        placeholder={isRTL ? "نام یا برند خودرو…" : "Car name or brand…"}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10"
                       />
                     </div>
-                    {filteredModels.length > 0 && (
+                    {filteredCatalog.length > 0 && (
                       <Card className="max-h-60 overflow-y-auto">
                         <CardContent className="p-0">
-                          {filteredModels.map((model) => (
+                          {filteredCatalog.map((catalogCar) => (
                             <button
-                              key={model.id}
+                              key={catalogCar.id}
                               type="button"
-                              onClick={() => handleSelectModel(model)}
+                              onClick={() => handleSelectCatalogCar(catalogCar)}
                               className="w-full text-right p-3 hover:bg-accent transition-colors border-b border-border last:border-0"
                             >
                               <div className="font-semibold">
-                                {isRTL ? model.name_fa : model.name_en}
+                                {catalogCar.name_fa}{" "}
+                                <span className="text-xs font-normal text-muted-foreground" dir="ltr">
+                                  {catalogCar.name_en}
+                                </span>
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {model.brand ?? "—"} • {model.battery_capacity_kwh ?? "?"} kWh •{" "}
-                                {model.range_km ?? "?"} km
+                                {catalogCar.brand ?? "—"} • {catalogCar.battery_capacity_kwh ?? "?"} kWh
+                                {catalogCar.cell_type ? ` ${catalogCar.cell_type}` : ""} •{" "}
+                                {catalogCar.range_km ?? "?"} km
                               </div>
                             </button>
                           ))}
                         </CardContent>
                       </Card>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      {isRTL ? "برای شخصی‌سازی کامل مشخصات، از " : "For full customization, add from the "}
+                      <button type="button" className="text-primary underline" onClick={() => navigate("/catalog")}>
+                        {isRTL ? "کاتالوگ" : "catalog"}
+                      </button>
+                      {isRTL ? " اضافه کنید." : "."}
+                    </p>
                   </div>
                 )}
 
@@ -234,6 +252,23 @@ export default function Cars() {
                   />
                 </div>
 
+                {formData.catalog_car_id && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>
+                      {isRTL ? "از کاتالوگ:" : "From catalog:"}{" "}
+                      {catalogById.get(formData.catalog_car_id)?.name_fa ?? formData.catalog_car_id}
+                    </span>
+                    <button
+                      type="button"
+                      title={isRTL ? "حذف پیوند کاتالوگ" : "Unlink catalog car"}
+                      onClick={() => setFormData((p) => ({ ...p, catalog_car_id: null }))}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </p>
+                )}
+                {/* legacy ev_model link — display only; new selections are catalog-only (TASK-0035) */}
                 {formData.ev_model_id && (
                   <p className="text-sm text-muted-foreground">
                     {isRTL ? "مدل:" : "Model:"}{" "}

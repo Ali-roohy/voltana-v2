@@ -1,5 +1,9 @@
 import { api } from "@/lib/api";
 
+// DEPRECATED for new car links (TASK-0035): car creation now picks from the
+// rich ev_catalog (`features/catalog`) and sets catalog_car_id. This module
+// stays only for displaying existing cars' legacy ev_model_id links — the
+// backend keeps `/v1/ev-models*` and the analytics fallback unchanged.
 export interface EVModel {
   id: string;
   name_fa: string;
