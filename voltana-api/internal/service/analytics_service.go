@@ -58,6 +58,15 @@ type BatteryHealthResult struct {
 // AnalyticsService estimates battery State of Health from charging history (the
 // delta-SOC method) and serves chemistry-aware recommendations. Ownership is
 // enforced via CarRepository (cross-user/unknown car → ErrCarNotFound → 404).
+// SOHAlertNotifier sends a push alert when a car's battery health crosses
+// below the alert threshold (TASK-0039). Implemented by PushService; nil-safe.
+type SOHAlertNotifier interface {
+	NotifySOHDrop(userID uuid.UUID, carName string, sohPct float64)
+}
+
+// sohAlertThreshold — alert fires when SOH crosses from ≥ threshold to < threshold.
+const sohAlertThreshold = 80.0
+
 type AnalyticsService struct {
 	cars     repository.CarRepository
 	evModels repository.EVModelRepository
@@ -65,6 +74,7 @@ type AnalyticsService struct {
 	sessions repository.ChargingRepository
 	battery  repository.BatteryRepository
 	cache    CacheStore
+	notifier SOHAlertNotifier // optional (nil in tests / when push unconfigured)
 
 	// per-car recompute coalescing: at most one recompute runs per car; a trigger
 	// that arrives while one is in flight marks the car pending so the latest data
@@ -95,6 +105,12 @@ func NewAnalyticsService(
 }
 
 func dashboardCacheKey(userID uuid.UUID) string { return "analytics:dashboard:" + userID.String() }
+
+// SetSOHAlertNotifier wires the push notifier. Separate from the constructor
+// (same pattern as ChargingService.SetHealthRecomputer) — push is optional.
+func (s *AnalyticsService) SetSOHAlertNotifier(n SOHAlertNotifier) {
+	s.notifier = n
+}
 
 // GetDashboard returns lifetime aggregate stats for a user (cache-aside, 5 min TTL).
 // Cache errors are non-fatal — the stats are recomputed from the source of truth.
@@ -289,8 +305,18 @@ func (s *AnalyticsService) compute(ctx context.Context, userID, carID uuid.UUID,
 	}
 
 	if persist {
+		// Fetch the previous snapshot BEFORE saving so the ≥80→<80 cross can be
+		// detected (TASK-0039). Missing previous = first estimate → no alert.
+		var prev *domain.BatteryHealthSnapshot
+		if s.notifier != nil {
+			prev, _ = s.battery.GetLatest(ctx, userID, carID)
+		}
 		if err := s.battery.Save(ctx, snap); err != nil {
 			return nil, err
+		}
+		if s.notifier != nil && prev != nil &&
+			prev.SOHPct >= sohAlertThreshold && snap.SOHPct < sohAlertThreshold {
+			s.notifier.NotifySOHDrop(userID, car.Name, snap.SOHPct)
 		}
 	}
 	return &BatteryHealthResult{Snapshot: snap, QualifyingSessions: qualifying}, nil

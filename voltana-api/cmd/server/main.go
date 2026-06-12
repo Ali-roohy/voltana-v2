@@ -134,6 +134,14 @@ func main() {
 
 	adminSvc   := service.NewAdminService(userRepo)
 	backupSvc  := service.NewBackupService(repository.NewBackupRepository(db), tokenStore)
+	pushSvc    := service.NewPushService(repository.NewPushRepository(db),
+		os.Getenv("VAPID_PUBLIC_KEY"), os.Getenv("VAPID_PRIVATE_KEY"), os.Getenv("APP_URL"))
+	if pushSvc.Enabled() {
+		analyticsSvc.SetSOHAlertNotifier(pushSvc)
+		log.Println("push: web push configured (VAPID)")
+	} else {
+		log.Println("push: VAPID keys not set — web push disabled")
+	}
 	sysSetSvc  := service.NewSystemSettingsService(sysSettingsRepo)
 
 	authH      := handler.NewAuthHandler(authSvc, isProd, sysSetSvc)
@@ -146,6 +154,7 @@ func main() {
 	analyticsH := handler.NewAnalyticsHandler(analyticsSvc)
 	stationH   := handler.NewStationHandler(stationSvc)
 	catalogH   := handler.NewCatalogHandler(catalogSvc)
+	pushH      := handler.NewPushHandler(pushSvc)
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	r := gin.New()
@@ -181,6 +190,10 @@ func main() {
 
 		v1.POST("/account/bot-link",      accountH.BotLink)
 		v1.POST("/account/set-password",  accountH.SetPassword)
+		v1.GET("/push/vapid-key", pushH.VAPIDKey)
+		v1.POST  ("/account/push-subscription", pushH.Subscribe)
+		v1.DELETE("/account/push-subscription", pushH.Unsubscribe)
+
 		v1.GET   ("/account/export", accountH.Export)
 		v1.POST  ("/account/import", accountH.Import)
 		v1.DELETE("/account",        accountH.DeleteAccount)
@@ -217,6 +230,7 @@ func main() {
 
 		v1.POST("/admin/test-otp", middleware.AdminOnly(authSvc), adminH.TestOTPDelivery)
 		v1.POST("/admin/test-bot-connection", middleware.AdminOnly(authSvc), adminH.TestBotConnection)
+		v1.POST("/admin/test-push", middleware.AdminOnly(authSvc), pushH.AdminTestPush)
 
 		v1.GET   ("/admin/users",     middleware.AdminOnly(authSvc), adminH.ListUsers)
 		v1.GET   ("/admin/users/:id", middleware.AdminOnly(authSvc), adminH.GetUser)
