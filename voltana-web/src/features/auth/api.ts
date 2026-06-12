@@ -140,12 +140,14 @@ export async function registerWithOTP(
   code: string,
   platform: "bale" | "telegram",
   email?: string,
+  fullName?: string,
 ): Promise<void> {
   const res = await api.post<TokenResponse>("/auth/otp/register", {
     phone,
     code,
     platform,
     ...(email ? { email } : {}),
+    ...(fullName ? { full_name: fullName } : {}),
   });
   authStore.setToken(res.access_token);
 }

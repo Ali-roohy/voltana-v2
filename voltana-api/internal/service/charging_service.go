@@ -55,7 +55,18 @@ func (s *ChargingService) triggerRecompute(userID, carID uuid.UUID) {
 }
 
 func (s *ChargingService) Create(ctx context.Context, userID uuid.UUID, in domain.ChargingInput) (*domain.ChargingSession, error) {
-	prepared, err := s.prepare(ctx, userID, in)
+	// Snapshot the owner's rates as they are RIGHT NOW (TASK-0037 FEAT-6).
+	// GetOrCreate also seeds a missing settings row from the admin defaults.
+	st, err := s.settings.GetOrCreate(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	rates := repository.Rates{Peak: st.PeakRate, Mid: st.MidRate, Offpeak: st.OffpeakRate}
+	in.RatePeakAtTime = &rates.Peak
+	in.RateMidAtTime = &rates.Mid
+	in.RateOffpeakAtTime = &rates.Offpeak
+
+	prepared, err := s.prepare(ctx, userID, in, rates)
 	if err != nil {
 		return nil, err
 	}
@@ -103,10 +114,20 @@ func (s *ChargingService) Update(ctx context.Context, userID, id uuid.UUID, in d
 	// Confirm the session belongs to the caller first, so a cross-user update is a
 	// 404 regardless of the request body (don't let a bad car_id surface as 422 and
 	// reveal that the session check was even reached).
-	if _, err := s.sessions.GetByID(ctx, userID, id); err != nil {
+	existing, err := s.sessions.GetByID(ctx, userID, id)
+	if err != nil {
 		return nil, translateChargingErr(err)
 	}
-	prepared, err := s.prepare(ctx, userID, in)
+	// Recompute against the session's FROZEN snapshot rates (FEAT-6) — editing a
+	// session must never re-price it with the user's current rates. Legacy rows
+	// without a snapshot fall back to current rates.
+	var rates repository.Rates
+	if existing.RatePeakAtTime != nil && existing.RateMidAtTime != nil && existing.RateOffpeakAtTime != nil {
+		rates = repository.Rates{Peak: *existing.RatePeakAtTime, Mid: *existing.RateMidAtTime, Offpeak: *existing.RateOffpeakAtTime}
+	} else if rates, err = s.settings.GetRates(ctx, userID); err != nil {
+		return nil, err
+	}
+	prepared, err := s.prepare(ctx, userID, in, rates)
 	if err != nil {
 		return nil, err
 	}
@@ -135,20 +156,17 @@ func (s *ChargingService) Delete(ctx context.Context, userID, id uuid.UUID) erro
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // prepare validates the input, confirms the car belongs to the caller, resolves
-// the cost (server-side if not supplied), and normalizes free-text fields. It is
-// the shared front-half of Create and Update.
-func (s *ChargingService) prepare(ctx context.Context, userID uuid.UUID, in domain.ChargingInput) (domain.ChargingInput, error) {
+// the cost (server-side if not supplied) from the given rates, and normalizes
+// free-text fields. It is the shared front-half of Create and Update; the caller
+// chooses the rates (Create: current → snapshot; Update: the frozen snapshot).
+func (s *ChargingService) prepare(ctx context.Context, userID uuid.UUID, in domain.ChargingInput, rates repository.Rates) (domain.ChargingInput, error) {
 	if err := validateChargingInput(in); err != nil {
 		return in, err
 	}
 	if err := s.ensureCarOwned(ctx, userID, in.CarID); err != nil {
 		return in, err
 	}
-	cost, err := s.resolveCost(ctx, userID, in)
-	if err != nil {
-		return in, err
-	}
-	in.Cost = cost
+	in.Cost = resolveCost(in, rates)
 	return normalizeChargingInput(in), nil
 }
 
@@ -165,23 +183,20 @@ func (s *ChargingService) ensureCarOwned(ctx context.Context, userID, carID uuid
 }
 
 // resolveCost keeps a client-supplied cost as-is; otherwise it computes the
-// time-of-use cost from the per-period energy and the user's rates. When no
-// period energy is provided there is nothing to compute, so cost stays nil.
-func (s *ChargingService) resolveCost(ctx context.Context, userID uuid.UUID, in domain.ChargingInput) (*float64, error) {
+// time-of-use cost from the per-period energy and the GIVEN rates (creation
+// snapshot or a session's frozen snapshot — never fetched here). When no period
+// energy is provided there is nothing to compute, so cost stays nil.
+func resolveCost(in domain.ChargingInput, rates repository.Rates) *float64 {
 	if in.Cost != nil {
-		return in.Cost, nil
+		return in.Cost
 	}
 	if in.EnergyPeakKWh == nil && in.EnergyMidKWh == nil && in.EnergyOffpeakKWh == nil {
-		return nil, nil
-	}
-	rates, err := s.settings.GetRates(ctx, userID)
-	if err != nil {
-		return nil, err
+		return nil
 	}
 	c := orZero(in.EnergyPeakKWh)*rates.Peak +
 		orZero(in.EnergyMidKWh)*rates.Mid +
 		orZero(in.EnergyOffpeakKWh)*rates.Offpeak
-	return &c, nil
+	return &c
 }
 
 func validateChargingInput(in domain.ChargingInput) error {

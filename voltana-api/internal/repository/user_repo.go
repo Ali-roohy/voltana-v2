@@ -25,7 +25,7 @@ type UserRepository interface {
 	Create(ctx context.Context, email, passwordHash string, fullName, phone *string) (*domain.User, error)
 	// CreateWithPhone creates a passwordless user identified by phone + bot chat_id.
 	// email is optional (nil → NULL). Returns ErrPhoneTaken or ErrEmailTaken on conflict.
-	CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error)
+	CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID, fullName *string) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	FindByPhone(ctx context.Context, phone string) (*domain.User, error)
@@ -83,12 +83,12 @@ func (r *pgxUserRepository) FindByPhone(ctx context.Context, phone string) (*dom
 	return scanUser(row)
 }
 
-func (r *pgxUserRepository) CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error) {
+func (r *pgxUserRepository) CreateWithPhone(ctx context.Context, phone string, email *string, baleChatID, telegramChatID, fullName *string) (*domain.User, error) {
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO users (phone, email, password_hash, bale_chat_id, telegram_chat_id, is_admin)
-		 VALUES ($1, $2, '', $3, $4, NOT EXISTS (SELECT 1 FROM users))
+		`INSERT INTO users (phone, email, password_hash, bale_chat_id, telegram_chat_id, full_name, is_admin)
+		 VALUES ($1, $2, '', $3, $4, $5, NOT EXISTS (SELECT 1 FROM users))
 		 RETURNING `+userCols,
-		phone, email, baleChatID, telegramChatID,
+		phone, email, baleChatID, telegramChatID, fullName,
 	)
 	u := &domain.User{}
 	var pgID pgtype.UUID

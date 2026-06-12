@@ -48,7 +48,9 @@ func NewChargingRepository(db *pgxpool.Pool) ChargingRepository {
 // into pointer fields directly.
 const chargingCols = `id, user_id, car_id, started_at, ended_at, location,
 	kwh_charged::float8, energy_peak_kwh::float8, energy_mid_kwh::float8, energy_offpeak_kwh::float8,
-	start_soc, end_soc, cost::float8, notes, odometer_km, created_at, updated_at`
+	start_soc, end_soc, cost::float8, notes, odometer_km,
+	rate_peak_at_time::float8, rate_mid_at_time::float8, rate_offpeak_at_time::float8,
+	created_at, updated_at`
 
 func (r *pgxChargingRepository) AggregateByUser(ctx context.Context, userID uuid.UUID) (float64, float64, int, error) {
 	var totalKWh, totalCost float64
@@ -93,11 +95,13 @@ func (r *pgxChargingRepository) Create(ctx context.Context, userID uuid.UUID, in
 	row := r.db.QueryRow(ctx,
 		`INSERT INTO charging_sessions
 			(user_id, car_id, started_at, ended_at, location, kwh_charged,
-			 energy_peak_kwh, energy_mid_kwh, energy_offpeak_kwh, start_soc, end_soc, cost, notes, odometer_km)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+			 energy_peak_kwh, energy_mid_kwh, energy_offpeak_kwh, start_soc, end_soc, cost, notes, odometer_km,
+			 rate_peak_at_time, rate_mid_at_time, rate_offpeak_at_time)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 		 RETURNING `+chargingCols,
 		userID, in.CarID, in.StartedAt, in.EndedAt, in.Location, in.KWhCharged,
 		in.EnergyPeakKWh, in.EnergyMidKWh, in.EnergyOffpeakKWh, in.StartSOC, in.EndSOC, in.Cost, in.Notes, in.OdometerKM,
+		in.RatePeakAtTime, in.RateMidAtTime, in.RateOffpeakAtTime,
 	)
 	return scanChargingSession(row)
 }
@@ -131,7 +135,9 @@ func (r *pgxChargingRepository) ListByUser(ctx context.Context, userID uuid.UUID
 		var id, uID, carID pgtype.UUID
 		if err := rows.Scan(&id, &uID, &carID, &s.StartedAt, &s.EndedAt, &s.Location,
 			&s.KWhCharged, &s.EnergyPeakKWh, &s.EnergyMidKWh, &s.EnergyOffpeakKWh,
-			&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM, &s.CreatedAt, &s.UpdatedAt,
+			&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM,
+			&s.RatePeakAtTime, &s.RateMidAtTime, &s.RateOffpeakAtTime,
+			&s.CreatedAt, &s.UpdatedAt,
 			&s.PrevOdometerKM, &total); err != nil {
 			return nil, 0, err
 		}
@@ -189,7 +195,9 @@ func scanChargingSession(row pgx.Row) (*domain.ChargingSession, error) {
 	var id, userID, carID pgtype.UUID
 	err := row.Scan(&id, &userID, &carID, &s.StartedAt, &s.EndedAt, &s.Location,
 		&s.KWhCharged, &s.EnergyPeakKWh, &s.EnergyMidKWh, &s.EnergyOffpeakKWh,
-		&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM, &s.CreatedAt, &s.UpdatedAt)
+		&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM,
+		&s.RatePeakAtTime, &s.RateMidAtTime, &s.RateOffpeakAtTime,
+		&s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound

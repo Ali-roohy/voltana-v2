@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useSystemSettings, useUpdateSystemSettings } from "@/features/admin-system/hooks";
 import type { SystemSettings } from "@/features/admin-system/api";
 
@@ -9,14 +11,27 @@ export function AdminSystemSettings() {
   const { data: settings, isLoading } = useSystemSettings();
   const updateSettings = useUpdateSystemSettings();
   const [selected, setSelected] = useState<SystemSettings["otp_delivery_method"]>("deeplink");
+  const [defPeak, setDefPeak] = useState("2000");
+  const [defMid, setDefMid] = useState("1000");
+  const [defOffpeak, setDefOffpeak] = useState("500");
 
   useEffect(() => {
-    if (settings) setSelected(settings.otp_delivery_method);
+    if (settings) {
+      setSelected(settings.otp_delivery_method);
+      setDefPeak(String(settings.default_peak_rate ?? 2000));
+      setDefMid(String(settings.default_mid_rate ?? 1000));
+      setDefOffpeak(String(settings.default_offpeak_rate ?? 500));
+    }
   }, [settings]);
 
   const handleSave = () => {
     updateSettings.mutate(
-      { otp_delivery_method: selected },
+      {
+        otp_delivery_method: selected,
+        default_peak_rate: parseFloat(defPeak) || 0,
+        default_mid_rate: parseFloat(defMid) || 0,
+        default_offpeak_rate: parseFloat(defOffpeak) || 0,
+      },
       {
         onSuccess: () => toast.success("تنظیمات ذخیره شد"),
         onError: () => toast.error("خطا در ذخیره تنظیمات"),
@@ -26,7 +41,11 @@ export function AdminSystemSettings() {
 
   if (isLoading) return null;
 
-  const isDirty = settings?.otp_delivery_method !== selected;
+  const isDirty =
+    settings?.otp_delivery_method !== selected ||
+    String(settings?.default_peak_rate ?? "") !== defPeak ||
+    String(settings?.default_mid_rate ?? "") !== defMid ||
+    String(settings?.default_offpeak_rate ?? "") !== defOffpeak;
 
   return (
     <Card>
@@ -81,6 +100,29 @@ export function AdminSystemSettings() {
               </p>
             </div>
           </label>
+        </div>
+
+        <div className="space-y-3 pt-2 border-t">
+          <div>
+            <p className="font-medium text-sm">نرخ‌های پیش‌فرض برق (تومان/کیلووات‌ساعت)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              برای کاربران جدید کپی می‌شود — نرخ کاربران فعلی و هزینه جلسات قبلی تغییر نمی‌کند
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="def-peak" className="text-xs">اوج بار</Label>
+              <Input id="def-peak" type="number" dir="ltr" value={defPeak} onChange={(e) => setDefPeak(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="def-mid" className="text-xs">میان‌باری</Label>
+              <Input id="def-mid" type="number" dir="ltr" value={defMid} onChange={(e) => setDefMid(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="def-offpeak" className="text-xs">کم‌باری</Label>
+              <Input id="def-offpeak" type="number" dir="ltr" value={defOffpeak} onChange={(e) => setDefOffpeak(e.target.value)} />
+            </div>
+          </div>
         </div>
 
         <Button

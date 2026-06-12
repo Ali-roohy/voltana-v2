@@ -101,6 +101,7 @@ func main() {
 
 	authSvc.SetBotSenders(baleSender, tgSender, baleUser, tgUser)
 	authSvc.SetSystemSettingsRepo(sysSettingsRepo)
+	authSvc.SetUserSettingsRepo(settingsRepo)
 
 	// ── Long-poll workers ─────────────────────────────────────────────────────
 	// One poller per configured real bot token. Pollers run in-process goroutines
@@ -132,10 +133,11 @@ func main() {
 	chargingSvc.SetHealthRecomputer(analyticsSvc)
 
 	adminSvc   := service.NewAdminService(userRepo)
+	backupSvc  := service.NewBackupService(repository.NewBackupRepository(db), tokenStore)
 	sysSetSvc  := service.NewSystemSettingsService(sysSettingsRepo)
 
 	authH      := handler.NewAuthHandler(authSvc, isProd, sysSetSvc)
-	accountH   := handler.NewAccountHandler(authSvc)
+	accountH   := handler.NewAccountHandler(authSvc, backupSvc, adminSvc, isProd)
 	adminH     := handler.NewAdminHandler(authSvc, adminSvc, sysSetSvc, bot.NewConnectionTester(baleToken, tgToken))
 	carH       := handler.NewCarHandler(carSvc)
 	evModelH   := handler.NewEVModelHandler(evModelSvc)
@@ -179,6 +181,9 @@ func main() {
 
 		v1.POST("/account/bot-link",      accountH.BotLink)
 		v1.POST("/account/set-password",  accountH.SetPassword)
+		v1.GET   ("/account/export", accountH.Export)
+		v1.POST  ("/account/import", accountH.Import)
+		v1.DELETE("/account",        accountH.DeleteAccount)
 
 		v1.GET("/cars", carH.List)
 		v1.POST("/cars", carH.Create)

@@ -179,6 +179,10 @@ type AuthService struct {
 
 	// System settings (optional; nil → treat as contact_share / legacy).
 	sysSettings repository.SystemSettingsRepository
+
+	// User-settings repo (optional): registration seeds the new user's settings
+	// row from the CURRENT admin default rates (TASK-0037 FEAT-6).
+	userSettings repository.SettingsRepository
 }
 
 func NewAuthService(
@@ -218,6 +222,24 @@ func (s *AuthService) SetSystemSettingsRepo(repo repository.SystemSettingsReposi
 	s.sysSettings = repo
 }
 
+// SetUserSettingsRepo wires the user-settings repository so registration can
+// seed the new account's rates from the current admin defaults (FEAT-6).
+func (s *AuthService) SetUserSettingsRepo(repo repository.SettingsRepository) {
+	s.userSettings = repo
+}
+
+// seedUserSettings copies the current admin default rates into a fresh user's
+// settings row. Best-effort: a failure must never fail the registration (the
+// lazy GetOrCreate on first settings access is the fallback).
+func (s *AuthService) seedUserSettings(ctx context.Context, userID uuid.UUID) {
+	if s.userSettings == nil {
+		return
+	}
+	if _, err := s.userSettings.GetOrCreate(ctx, userID); err != nil {
+		log.Printf("register: seeding user settings for %s failed: %v", userID, err)
+	}
+}
+
 // GetBotUsernames returns the configured bot usernames (may be empty strings when not set).
 func (s *AuthService) GetBotUsernames() (bale, tg string) {
 	return s.baleBotUsername, s.tgBotUsername
@@ -246,6 +268,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, fullName, p
 	if err != nil {
 		return nil, err
 	}
+	s.seedUserSettings(ctx, user.ID)
 	s.issueVerification(ctx, user)
 	return user, nil
 }
@@ -817,7 +840,7 @@ func (s *AuthService) StoreRegistrationContact(ctx context.Context, platform, ch
 
 // CompleteOTPRegister validates a registration OTP and creates a new user
 // identified by phone + bot chat_id. email is optional (B6, TASK-0026).
-func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip string, platform Platform, email *string) (accessToken, refreshToken string, err error) {
+func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip string, platform Platform, email *string, fullName string) (accessToken, refreshToken string, err error) {
 	normalized, normErr := normalizePhone(phone)
 	if normErr != nil {
 		return "", "", &OTPInvalidError{RemainingAttempts: otpMaxAttempts}
@@ -882,7 +905,11 @@ func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip s
 		tgChatID = &chatID
 	}
 
-	user, createErr := s.users.CreateWithPhone(ctx, normalized, email, baleChatID, tgChatID)
+	var namePtr *string
+	if trimmed := strings.TrimSpace(fullName); trimmed != "" {
+		namePtr = &trimmed
+	}
+	user, createErr := s.users.CreateWithPhone(ctx, normalized, email, baleChatID, tgChatID, namePtr)
 	if createErr != nil {
 		if errors.Is(createErr, repository.ErrPhoneTaken) {
 			return "", "", ErrPhoneTaken
@@ -892,6 +919,7 @@ func (s *AuthService) CompleteOTPRegister(ctx context.Context, phone, code, ip s
 		}
 		return "", "", fmt.Errorf("otp: create user: %w", createErr)
 	}
+	s.seedUserSettings(ctx, user.ID)
 
 	return s.issueTokenPair(ctx, user.ID)
 }

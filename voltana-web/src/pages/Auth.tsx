@@ -122,6 +122,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [code, setCode] = useState('');
   const [passwordVal, setPasswordVal] = useState('');
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
@@ -288,7 +289,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
     setLoading(true);
     try {
       if (mode === 'register') {
-        await registerWithOTP(phone.trim(), codeVal, platform, email.trim() || undefined);
+        await registerWithOTP(phone.trim(), codeVal, platform, email.trim() || undefined, fullName.trim() || undefined);
         toast.success('ثبت نام با موفقیت انجام شد!');
         setStep('set_password');
       } else {
@@ -318,7 +319,7 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, timerStarted, otpTimer, phone, email, mode, platform, stayLoggedIn]);
+  }, [loading, timerStarted, otpTimer, phone, email, fullName, mode, platform, stayLoggedIn]);
 
   // isExpired is only true AFTER the timer has started AND counted to zero.
   // Before startTimers() is called (deep_link / contact_share waiting), it is
@@ -362,6 +363,17 @@ function BotOTPTab({ platform, mode, onBack }: BotOTPTabProps) {
           />
           <p className="text-xs text-muted-foreground">{helperText}</p>
         </div>
+        {mode === 'register' && (
+          <div className="space-y-2">
+            <Label htmlFor={`${platform}-reg-name`}>نام و نام خانوادگی (اختیاری)</Label>
+            <Input
+              id={`${platform}-reg-name`}
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+            />
+          </div>
+        )}
         {mode === 'register' && (
           <div className="space-y-2">
             <Label htmlFor={`${platform}-reg-email`}>ایمیل (اختیاری)</Label>
@@ -804,7 +816,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
+    <div className="min-h-screen flex items-center justify-center app-page-bg-gradient p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-primary mb-4 shadow-glow">

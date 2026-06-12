@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ThemeId, applyTheme, getSavedThemeId } from '@/lib/themes';
 import { applyDynamicTheme, getSavedDynamicColor } from '@/lib/dynamic-theme';
+import { applySavedBackground } from '@/lib/background';
 
 interface ThemeContextValue {
   themeId: ThemeId;
@@ -16,6 +17,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // A persisted dynamic car-color theme (TASK-0033) wins over the preset id;
   // themeId stays 'default' so Settings shows no preset as selected-ish state.
   useEffect(() => {
+    // Background layer (FEAT-3) is independent of which theme path wins below.
+    applySavedBackground();
     const dynamicColor = getSavedDynamicColor();
     if (dynamicColor !== null) {
       applyDynamicTheme(dynamicColor);

@@ -6,7 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Zap, Palette } from "lucide-react";
+import { ArrowLeft, Zap, Palette, Download } from "lucide-react";
+import { usePWAInstall } from "@/lib/pwa-install";
+import { BackgroundPicker } from "@/features/settings/BackgroundPicker";
+import { BackupRestoreCard } from "@/features/settings/BackupRestoreCard";
+import { DeleteAccountCard } from "@/features/settings/DeleteAccountCard";
 import { AdminOTPPanel } from "@/features/settings/AdminOTPPanel";
 import { AdminSystemSettings } from "@/features/settings/AdminSystemSettings";
 import { useSettings, useUpdateSettings } from "@/features/settings/hooks";
@@ -40,6 +44,7 @@ export default function Settings() {
   // Fetch user settings (GET auto-creates a default row server-side)
   const { data: settings, isLoading } = useSettings();
   const { data: me } = useMe(!!user);
+  const { canInstall, install } = usePWAInstall();
 
   useEffect(() => {
     if (settings) {
@@ -99,7 +104,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary to-background">
+    <div className="min-h-screen app-page-bg-gradient">
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between">
@@ -124,6 +129,32 @@ export default function Settings() {
       {/* Main Content */}
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-2xl">
         <div className="space-y-6">
+          {/* PWA install (FEAT-2) — only when the browser offered an install prompt */}
+          {canInstall && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="w-5 h-5" />
+                  نصب اپلیکیشن
+                </CardTitle>
+                <CardDescription>
+                  ولتانا را مانند یک اپلیکیشن واقعی روی دستگاه خود نصب کنید
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  className="w-full"
+                  onClick={async () => {
+                    const ok = await install();
+                    if (ok) toast.success('اپلیکیشن نصب شد');
+                  }}
+                >
+                  نصب اپلیکیشن
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Electricity Rates Card */}
           <Card>
             <CardHeader>
@@ -239,6 +270,22 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* Background designer card (FEAT-3) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="w-5 h-5" />
+                پس‌زمینه
+              </CardTitle>
+              <CardDescription>
+                رنگ ثابت، گرادیان یا الگو — مستقل از تم رنگی
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BackgroundPicker />
+            </CardContent>
+          </Card>
+
           {/* Font selector card */}
           <Card>
             <CardHeader>
@@ -295,6 +342,13 @@ export default function Settings() {
 
           {/* Admin system settings — OTP delivery method */}
           {me?.is_admin && <AdminSystemSettings />}
+
+          {/* Backup & restore (FEAT-4) — end of Settings */}
+          <BackupRestoreCard />
+
+          {/* Self-delete (FEAT-5) — hidden for the permanent admin; the API
+              enforces the last-admin guard regardless */}
+          {me && !me.is_admin && <DeleteAccountCard />}
         </div>
       </main>
     </div>

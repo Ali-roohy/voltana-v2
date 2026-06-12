@@ -25,6 +25,13 @@ type ChargingSession struct {
 	Cost             *float64   `json:"cost"`
 	Notes            *string    `json:"notes"`
 	OdometerKM       *int       `json:"odometer_km"`
+	// Rate snapshot (TASK-0037 FEAT-6): the owner's rates when the session was
+	// created. Frozen — updates never touch them; analytics/cost math must use
+	// these, not the user's current rates. Nil only on pre-migration legacy rows
+	// whose owner had no settings row to backfill from.
+	RatePeakAtTime    *float64 `json:"rate_peak_at_time"`
+	RateMidAtTime     *float64 `json:"rate_mid_at_time"`
+	RateOffpeakAtTime *float64 `json:"rate_offpeak_at_time"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 
@@ -55,6 +62,12 @@ type ChargingInput struct {
 	Cost             *float64
 	Notes            *string
 	OdometerKM       *int
+
+	// Snapshot rates — set by the SERVICE at create time, never bound from the
+	// client and never changed on update.
+	RatePeakAtTime    *float64
+	RateMidAtTime     *float64
+	RateOffpeakAtTime *float64
 }
 
 // ChargingFilter narrows a session list. Nil fields are ignored.

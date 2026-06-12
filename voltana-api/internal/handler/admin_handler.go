@@ -294,11 +294,21 @@ func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"otp_delivery_method": settings.OTPDeliveryMethod})
+	c.JSON(http.StatusOK, gin.H{
+		"otp_delivery_method":  settings.OTPDeliveryMethod,
+		"default_peak_rate":    settings.DefaultPeakRate,
+		"default_mid_rate":     settings.DefaultMidRate,
+		"default_offpeak_rate": settings.DefaultOffpeakRate,
+	})
 }
 
 type updateSystemSettingsReq struct {
 	OTPDeliveryMethod string `json:"otp_delivery_method" binding:"required"`
+	// Default rates are optional so the existing OTP-only PUT keeps working;
+	// when any is present all three are required (full-replace, FEAT-6).
+	DefaultPeakRate    *float64 `json:"default_peak_rate"`
+	DefaultMidRate     *float64 `json:"default_mid_rate"`
+	DefaultOffpeakRate *float64 `json:"default_offpeak_rate"`
 }
 
 // UpdateSystemSettings handles PUT /v1/admin/system-settings.
@@ -318,10 +328,30 @@ func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
 		return
 	}
 
+	if req.DefaultPeakRate != nil || req.DefaultMidRate != nil || req.DefaultOffpeakRate != nil {
+		if req.DefaultPeakRate == nil || req.DefaultMidRate == nil || req.DefaultOffpeakRate == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "all three default rates are required together"})
+			return
+		}
+		if err := h.sysSet.SetDefaultRates(c.Request.Context(), *req.DefaultPeakRate, *req.DefaultMidRate, *req.DefaultOffpeakRate); err != nil {
+			if errors.Is(err, service.ErrInvalidDefaultRates) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update default rates"})
+			return
+		}
+	}
+
 	settings, err := h.sysSet.GetSettings(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings updated but failed to read back"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"otp_delivery_method": settings.OTPDeliveryMethod})
+	c.JSON(http.StatusOK, gin.H{
+		"otp_delivery_method":  settings.OTPDeliveryMethod,
+		"default_peak_rate":    settings.DefaultPeakRate,
+		"default_mid_rate":     settings.DefaultMidRate,
+		"default_offpeak_rate": settings.DefaultOffpeakRate,
+	})
 }

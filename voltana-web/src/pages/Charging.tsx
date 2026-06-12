@@ -37,7 +37,7 @@ import { format as formatJalali } from "date-fns-jalali";
 import { JalaliDatePicker } from "@/components/JalaliDatePicker";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { cn } from "@/lib/utils";
-import { calcCost, ratesFromSettings, formatCost } from "@/lib/cost";
+import { calcCost, ratesFromSettings, ratesForSession, formatCost } from "@/lib/cost";
 import { SOCAnalysis } from "@/components/SOCAnalysis";
 import { Header } from "@/components/Header";
 import { useChargingSessions, useCreateSession, useUpdateSession, useDeleteSession } from "@/features/charging/hooks";
@@ -143,7 +143,7 @@ const Charging = () => {
   const rates = ratesFromSettings(settings);
 
   // A manual override wins; otherwise the rate-based sum (single source of truth in lib/cost).
-  const getSessionCost = (session: ChargingSession) => session.cost ?? calcCost(session, rates).total;
+  const getSessionCost = (session: ChargingSession) => session.cost ?? calcCost(session, ratesForSession(session, rates)).total;
 
   const totalKwh = (s: ChargingSession) =>
     s.kwh_charged ??
@@ -320,7 +320,7 @@ const Charging = () => {
   const carName = (carId: string) => carById.get(carId)?.name ?? "—";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen app-page-bg">
       <Header />
 
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
@@ -544,7 +544,7 @@ const Charging = () => {
 
                       {/* Time-of-use cost breakdown (degrades to total-only when no per-period split). */}
                       {(() => {
-                        const c = calcCost(session, rates);
+                        const c = calcCost(session, ratesForSession(session, rates));
                         return (
                           <TOUBreakdown
                             variant="inline"

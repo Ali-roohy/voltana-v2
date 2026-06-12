@@ -40,3 +40,25 @@ export interface TestBotConnectionResult {
 // Server-side getMe with the env bot token (admin-only; the token never reaches the client).
 export const testBotConnection = (platform: "bale" | "telegram") =>
   api.post<TestBotConnectionResult>("/v1/admin/test-bot-connection", { platform });
+
+// ── Backup & restore (TASK-0037 FEAT-4) ──────────────────────────────────────
+
+export interface ImportStats {
+  cars: number;
+  sessions: number;
+  snapshots: number;
+}
+
+export interface ImportResult {
+  message: string;
+  imported: ImportStats;
+}
+
+// The payload is an opaque versioned document — the client never interprets it.
+export const exportAccountData = () => api.get<Record<string, unknown>>("/v1/account/export");
+export const importAccountData = (backup: unknown) =>
+  api.post<ImportResult>("/v1/account/import", backup);
+
+// ── Self-delete account (TASK-0037 FEAT-5) ───────────────────────────────────
+
+export const deleteAccount = () => api.del<void>("/v1/account");

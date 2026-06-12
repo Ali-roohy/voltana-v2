@@ -59,11 +59,18 @@ func (r *pgxSettingsRepository) GetRates(ctx context.Context, userID uuid.UUID) 
 	return rt, nil
 }
 
-// GetOrCreate inserts a default row if none exists (ON CONFLICT DO NOTHING, so a
-// plain read does not bump updated_at), then returns the row.
+// GetOrCreate inserts a row if none exists (ON CONFLICT DO NOTHING, so a plain
+// read does not bump updated_at), then returns the row. The initial rates are
+// COPIED from the admin defaults in system_settings at creation time (TASK-0037
+// FEAT-6) — a later admin-default change affects only rows created after it.
 func (r *pgxSettingsRepository) GetOrCreate(ctx context.Context, userID uuid.UUID) (*domain.UserSettings, error) {
 	if _, err := r.db.Exec(ctx,
-		`INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, userID,
+		`INSERT INTO user_settings (user_id, peak_rate, mid_rate, offpeak_rate)
+		 SELECT $1,
+		        COALESCE((SELECT value::numeric FROM system_settings WHERE key = 'default_peak_rate'),    2000),
+		        COALESCE((SELECT value::numeric FROM system_settings WHERE key = 'default_mid_rate'),     1000),
+		        COALESCE((SELECT value::numeric FROM system_settings WHERE key = 'default_offpeak_rate'), 500)
+		 ON CONFLICT (user_id) DO NOTHING`, userID,
 	); err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"voltana-api/internal/repository"
 	"voltana-api/internal/service"
 )
 
@@ -21,6 +22,14 @@ func (m *mockSystemSettingsRepo) GetOTPDeliveryMethod(_ context.Context) (string
 
 func (m *mockSystemSettingsRepo) SetOTPDeliveryMethod(_ context.Context, method string) error {
 	m.method = method
+	return nil
+}
+
+func (m *mockSystemSettingsRepo) GetDefaultRates(_ context.Context) (repository.Rates, error) {
+	return repository.Rates{Peak: 2000, Mid: 1000, Offpeak: 500}, nil
+}
+
+func (m *mockSystemSettingsRepo) SetDefaultRates(_ context.Context, _ repository.Rates) error {
 	return nil
 }
 

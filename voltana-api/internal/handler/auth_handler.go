@@ -78,10 +78,11 @@ type otpVerifyBody struct {
 }
 
 type otpRegisterBody struct {
-	Phone    string  `json:"phone"    binding:"required"`
-	Code     string  `json:"code"     binding:"required,len=6"`
-	Platform string  `json:"platform" binding:"required"`
+	Phone    string  `json:"phone"     binding:"required"`
+	Code     string  `json:"code"      binding:"required,len=6"`
+	Platform string  `json:"platform"  binding:"required"`
 	Email    *string `json:"email"`
+	FullName string  `json:"full_name" binding:"omitempty,max=100"`
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -441,7 +442,7 @@ func (h *AuthHandler) OTPRegister(c *gin.Context) {
 	}
 
 	platform := normalizePlatform(req.Platform)
-	access, refresh, err := h.auth.CompleteOTPRegister(c.Request.Context(), req.Phone, req.Code, c.ClientIP(), platform, req.Email)
+	access, refresh, err := h.auth.CompleteOTPRegister(c.Request.Context(), req.Phone, req.Code, c.ClientIP(), platform, req.Email, req.FullName)
 	if err != nil {
 		if errors.Is(err, service.ErrPhoneTaken) {
 			c.JSON(http.StatusConflict, gin.H{"error": "phone already registered", "code": "PHONE_TAKEN"})

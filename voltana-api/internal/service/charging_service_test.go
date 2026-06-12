@@ -34,6 +34,7 @@ func (m *mockChargingRepo) Create(_ context.Context, userID uuid.UUID, in domain
 		EnergyMidKWh: in.EnergyMidKWh, EnergyOffpeakKWh: in.EnergyOffpeakKWh,
 		StartSOC: in.StartSOC, EndSOC: in.EndSOC, Cost: in.Cost, Notes: in.Notes,
 		OdometerKM: in.OdometerKM,
+		RatePeakAtTime: in.RatePeakAtTime, RateMidAtTime: in.RateMidAtTime, RateOffpeakAtTime: in.RateOffpeakAtTime,
 	}
 	m.store[s.ID] = s
 	return &s, nil
@@ -161,7 +162,10 @@ func (m *mockSettingsRepo) GetOrCreate(_ context.Context, userID uuid.UUID) (*do
 	}
 	s, ok := m.store[userID]
 	if !ok {
-		s = domain.UserSettings{ID: uuid.New(), UserID: userID}
+		// Mirror the real repo: a fresh row is seeded with the (admin default)
+		// rates — here the harness rates double as those defaults.
+		s = domain.UserSettings{ID: uuid.New(), UserID: userID,
+			PeakRate: m.rates.Peak, MidRate: m.rates.Mid, OffpeakRate: m.rates.Offpeak}
 		m.store[userID] = s
 	}
 	return &s, nil
@@ -380,5 +384,86 @@ func TestCharging_ListFilterAndPaginationClamp(t *testing.T) {
 	}
 	if repo.lastFilter.CarID == nil || *repo.lastFilter.CarID != carID {
 		t.Errorf("car_id filter not passed through to repository")
+	}
+}
+
+
+// ── rate snapshots (TASK-0037 FEAT-6) ─────────────────────────────────────────
+
+func TestCreate_SnapshotsRatesAtCreation(t *testing.T) {
+	owner := uuid.New()
+	svc, carID, _ := newChargingSvc(t, owner, repository.Rates{Peak: 5000, Mid: 3000, Offpeak: 1000})
+
+	in := baseInput(carID)
+	e := 10.0
+	in.EnergyPeakKWh = &e
+	sess, err := svc.Create(context.Background(), owner, in)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if sess.RatePeakAtTime == nil || *sess.RatePeakAtTime != 5000 ||
+		sess.RateMidAtTime == nil || *sess.RateMidAtTime != 3000 ||
+		sess.RateOffpeakAtTime == nil || *sess.RateOffpeakAtTime != 1000 {
+		t.Errorf("snapshot rates = %v/%v/%v, want 5000/3000/1000",
+			sess.RatePeakAtTime, sess.RateMidAtTime, sess.RateOffpeakAtTime)
+	}
+	if sess.Cost == nil || *sess.Cost != 50000 {
+		t.Errorf("cost = %v, want 50000 (10 kWh × 5000)", sess.Cost)
+	}
+}
+
+func TestUpdate_RecomputesWithFrozenRates(t *testing.T) {
+	owner := uuid.New()
+	carRepo := newMockCarRepo()
+	car, _ := carRepo.Create(context.Background(), owner, repository.CarInput{Name: "Daily"})
+	chRepo := newMockChargingRepo()
+	settings := &mockSettingsRepo{rates: repository.Rates{Peak: 5000, Mid: 3000, Offpeak: 1000}}
+	svc := service.NewChargingService(chRepo, carRepo, settings)
+
+	in := baseInput(car.ID)
+	e := 10.0
+	in.EnergyPeakKWh = &e
+	sess, err := svc.Create(context.Background(), owner, in)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// The user's rates change AFTER the session was created.
+	settings.rates = repository.Rates{Peak: 9000, Mid: 7000, Offpeak: 5000}
+	if cur, ok := settings.store[owner]; ok {
+		cur.PeakRate, cur.MidRate, cur.OffpeakRate = 9000, 7000, 5000
+		settings.store[owner] = cur
+	}
+
+	// Edit the session (more energy, no manual cost) → cost must use the
+	// FROZEN 5000 peak rate, not the new 9000.
+	upd := baseInput(car.ID)
+	e2 := 20.0
+	upd.EnergyPeakKWh = &e2
+	updated, err := svc.Update(context.Background(), owner, sess.ID, upd)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Cost == nil || *updated.Cost != 100000 {
+		t.Errorf("updated cost = %v, want 100000 (20 kWh × frozen 5000, not 180000 with current 9000)", updated.Cost)
+	}
+	if updated.RatePeakAtTime == nil || *updated.RatePeakAtTime != 5000 {
+		t.Errorf("snapshot must stay frozen at 5000, got %v", updated.RatePeakAtTime)
+	}
+
+	// A NEW session after the rate change snapshots the NEW rates.
+	in2 := baseInput(car.ID)
+	e3 := 10.0
+	in2.EnergyPeakKWh = &e3
+	sess2, err := svc.Create(context.Background(), owner, in2)
+	if err != nil {
+		t.Fatalf("Create 2nd: %v", err)
+	}
+	// owner's settings row already exists with the updated rates.
+	if sess2.Cost == nil || *sess2.Cost != 90000 {
+		t.Errorf("2nd session cost = %v, want 90000 (10 kWh × current 9000)", sess2.Cost)
+	}
+	if sess2.RatePeakAtTime == nil || *sess2.RatePeakAtTime != 9000 {
+		t.Errorf("2nd session snapshot = %v, want 9000", sess2.RatePeakAtTime)
 	}
 }

@@ -125,3 +125,27 @@ html.theme-transition * {
     border-color 0.5s ease,
     box-shadow 0.5s ease !important;
 }
+
+/* TASK-0037 FEAT-3 — theme background designer (lib/background.ts).
+   Pages use these classes instead of inline bg utilities; when a custom
+   background is active (html[data-custom-bg]) they go transparent and the
+   body paints var(--app-custom-bg) instead. */
+.app-page-bg {
+  background: hsl(var(--background));
+}
+.app-page-bg-gradient {
+  background: linear-gradient(
+    to bottom left,
+    hsl(var(--background)),
+    hsl(var(--secondary)),
+    hsl(var(--background))
+  );
+}
+html[data-custom-bg] .app-page-bg,
+html[data-custom-bg] .app-page-bg-gradient {
+  background: transparent;
+}
+html[data-custom-bg] body {
+  background: var(--app-custom-bg);
+  background-attachment: fixed;
+}

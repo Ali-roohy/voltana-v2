@@ -77,3 +77,24 @@ func (s *AdminService) DeleteUser(ctx context.Context, callerID, targetID uuid.U
 	}
 	return s.users.Delete(ctx, targetID)
 }
+
+// SelfDelete removes the authenticated user's own account (TASK-0037 FEAT-5).
+// All owned rows cascade via FK (cars, sessions, snapshots, settings). The
+// permanent first admin is protected by the last-admin guard: an admin can
+// only self-delete when another admin exists.
+func (s *AdminService) SelfDelete(ctx context.Context, userID uuid.UUID) error {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.IsAdmin {
+		count, err := s.users.CountAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if count <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	return s.users.Delete(ctx, userID)
+}

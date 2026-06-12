@@ -12,7 +12,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { Header } from "@/components/Header";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { formatNumber } from "@/lib/utils";
-import { calcCost, ratesFromSettings, formatCost } from "@/lib/cost";
+import { calcCost, ratesFromSettings, ratesForSession, formatCost } from "@/lib/cost";
 import { useChargingSessions } from "@/features/charging/hooks";
 import type { ChargingSession } from "@/features/charging/api";
 import { useCars } from "@/features/cars/hooks";
@@ -95,7 +95,7 @@ export default function Index() {
     const totalEnergy = sorted.reduce((sum, s) => sum + totalKwh(s), 0);
     // Honor a manual cost override, else fall back to the rate-based sum (a bare
     // `s.cost ?? 0` undercounted sessions whose cost is server/rate-computed).
-    const totalCost = sorted.reduce((sum, s) => sum + (s.cost ?? calcCost(s, rates).total), 0);
+    const totalCost = sorted.reduce((sum, s) => sum + (s.cost ?? calcCost(s, ratesForSession(s, rates)).total), 0);
 
     // Current-month time-of-use breakdown (Gregorian YYYY-MM, same bucketing as the
     // energy trend below). Costs are rate-based via the shared helper.
@@ -104,7 +104,7 @@ export default function Index() {
       .filter((s) => s.started_at.slice(0, 7) === ym)
       .reduce(
         (acc, s) => {
-          const c = calcCost(s, rates);
+          const c = calcCost(s, ratesForSession(s, rates));
           acc.peak.kwh += s.energy_peak_kwh ?? 0;
           acc.peak.cost += c.peak;
           acc.mid.kwh += s.energy_mid_kwh ?? 0;
@@ -123,7 +123,7 @@ export default function Index() {
       const month = s.started_at.slice(0, 7); // YYYY-MM
       const bucket = monthly[month] ?? (monthly[month] = { energy: 0, cost: 0 });
       bucket.energy += totalKwh(s);
-      bucket.cost += s.cost ?? calcCost(s, rates).total;
+      bucket.cost += s.cost ?? calcCost(s, ratesForSession(s, rates)).total;
     });
     const trend = Object.entries(monthly)
       .map(([month, v]) => ({ month, energy: Number(v.energy.toFixed(2)), cost: Math.round(v.cost) }))
@@ -165,7 +165,7 @@ export default function Index() {
     return null;
   }
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary to-background">
+    <div className="min-h-screen app-page-bg-gradient">
       <Header />
 
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">

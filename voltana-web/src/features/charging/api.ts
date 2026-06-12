@@ -15,6 +15,12 @@ export interface ChargingSession {
   cost: number | null;
   notes: string | null;
   odometer_km: number | null;
+  // Rate snapshot (FEAT-6): the owner's rates when the session was created.
+  // Cost math must use these — never the current settings. Null only on
+  // legacy rows whose owner had no settings at backfill time.
+  rate_peak_at_time: number | null;
+  rate_mid_at_time: number | null;
+  rate_offpeak_at_time: number | null;
   // Derived server-side (kWh/100km) when this and the previous session both have
   // an odometer reading with a positive distance; otherwise null.
   efficiency_kwh_per_100km: number | null;

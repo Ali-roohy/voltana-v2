@@ -49,11 +49,11 @@ func (m *mockUserRepo) Create(_ context.Context, email, passwordHash string, ful
 	return u, nil
 }
 
-func (m *mockUserRepo) CreateWithPhone(_ context.Context, phone string, email *string, baleChatID, telegramChatID *string) (*domain.User, error) {
+func (m *mockUserRepo) CreateWithPhone(_ context.Context, phone string, email *string, baleChatID, telegramChatID, fullName *string) (*domain.User, error) {
 	if _, exists := m.byPhone[phone]; exists {
 		return nil, repository.ErrPhoneTaken
 	}
-	u := &domain.User{ID: uuid.New(), Phone: &phone}
+	u := &domain.User{ID: uuid.New(), Phone: &phone, FullName: fullName}
 	if email != nil && *email != "" {
 		u.Email = *email
 		m.byEmail[*email] = u
@@ -844,7 +844,7 @@ func TestCompleteOTPRegister_Success(t *testing.T) {
 	store.cache["otp:reg:bale:+989125555555"] = "234567"
 	store.cache["reg:contact:bale:+989125555555"] = "new_chat_456"
 
-	access, refresh, err := svc.CompleteOTPRegister(context.Background(), "+989125555555", "234567", "1.2.3.4", service.PlatformBale, nil)
+	access, refresh, err := svc.CompleteOTPRegister(context.Background(), "+989125555555", "234567", "1.2.3.4", service.PlatformBale, nil, "")
 	if err != nil {
 		t.Fatalf("CompleteOTPRegister: %v", err)
 	}
@@ -859,7 +859,7 @@ func TestCompleteOTPRegister_WithEmail(t *testing.T) {
 	store.cache["reg:contact:bale:+989126666666"] = "chat_with_email"
 
 	email := "newuser@example.com"
-	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989126666666", "111111", "1.2.3.4", service.PlatformBale, &email)
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989126666666", "111111", "1.2.3.4", service.PlatformBale, &email, "")
 	if err != nil {
 		t.Fatalf("CompleteOTPRegister with email: %v", err)
 	}
@@ -874,7 +874,7 @@ func TestCompleteOTPRegister_PhoneTaken(t *testing.T) {
 	store.cache["otp:reg:bale:+989127777777"] = "999999"
 	store.cache["reg:contact:bale:+989127777777"] = "taken_chat"
 
-	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989127777777", "999999", "1.2.3.4", service.PlatformBale, nil)
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989127777777", "999999", "1.2.3.4", service.PlatformBale, nil, "")
 	if !errors.Is(err, service.ErrPhoneTaken) {
 		t.Errorf("want ErrPhoneTaken for already-registered phone, got %v", err)
 	}
@@ -885,7 +885,7 @@ func TestCompleteOTPRegister_InvalidOTP(t *testing.T) {
 	store.cache["otp:reg:bale:+989128888888"] = "correct"
 	store.cache["reg:contact:bale:+989128888888"] = "some_chat"
 
-	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989128888888", "wrong1", "1.2.3.4", service.PlatformBale, nil)
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989128888888", "wrong1", "1.2.3.4", service.PlatformBale, nil, "")
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid for wrong code, got %v", err)
 	}
@@ -896,7 +896,7 @@ func TestCompleteOTPRegister_NoBotContact(t *testing.T) {
 	// OTP exists but no reg:contact (user never started the bot).
 	store.cache["otp:reg:bale:+989129999999"] = "555555"
 
-	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989129999999", "555555", "1.2.3.4", service.PlatformBale, nil)
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989129999999", "555555", "1.2.3.4", service.PlatformBale, nil, "")
 	// Anti-enum: same error as invalid OTP (no hint that bot contact is missing).
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid when no bot contact stored, got %v", err)
@@ -912,7 +912,7 @@ func TestLoginWithPhone_NoPasswordSet(t *testing.T) {
 	chatID := "chat_abc"
 	store.cache["otp:reg:bale:"+phone] = "111222"
 	store.cache["reg:contact:bale:"+phone] = chatID
-	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "111222", "1.2.3.4", service.PlatformBale, nil); err != nil {
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "111222", "1.2.3.4", service.PlatformBale, nil, ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -928,7 +928,7 @@ func TestLoginWithPhone_WrongPassword(t *testing.T) {
 	chatID := "chat_xyz"
 	store.cache["otp:reg:bale:"+phone] = "333444"
 	store.cache["reg:contact:bale:"+phone] = chatID
-	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "333444", "1.2.3.4", service.PlatformBale, nil); err != nil {
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "333444", "1.2.3.4", service.PlatformBale, nil, ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	// Set a password.
@@ -949,7 +949,7 @@ func TestLoginWithPhone_Success(t *testing.T) {
 	chatID := "chat_ok"
 	store.cache["otp:reg:bale:"+phone] = "555666"
 	store.cache["reg:contact:bale:"+phone] = chatID
-	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "555666", "1.2.3.4", service.PlatformBale, nil); err != nil {
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), phone, "555666", "1.2.3.4", service.PlatformBale, nil, ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	u := users.byPhone[phone]
@@ -998,11 +998,11 @@ func TestCompleteOTPRegister_SingleUse(t *testing.T) {
 	store.cache["otp:reg:bale:+989120001111"] = "123123"
 	store.cache["reg:contact:bale:+989120001111"] = "chat_single"
 
-	if _, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil); err != nil {
+	if _, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil, ""); err != nil {
 		t.Fatalf("first CompleteOTPRegister: %v", err)
 	}
 	// Second attempt: OTP consumed + contact consumed → OTPInvalid.
-	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil)
+	_, _, err := svc.CompleteOTPRegister(context.Background(), "+989120001111", "123123", "1.2.3.4", service.PlatformBale, nil, "")
 	if !errors.Is(err, service.ErrOTPInvalid) {
 		t.Errorf("want ErrOTPInvalid on replay, got %v", err)
 	}

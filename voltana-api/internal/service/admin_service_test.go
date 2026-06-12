@@ -157,3 +157,40 @@ func TestAdminService_UpdateUser_NotFound(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+// ── self-delete (TASK-0037 FEAT-5) ────────────────────────────────────────────
+
+func TestSelfDelete_LastAdminRefused(t *testing.T) {
+	repo := newMockUserRepo()
+	svc := service.NewAdminService(repo)
+	admin, _ := repo.Create(context.Background(), "admin@test.com", "hash", nil, nil)
+	admin.IsAdmin = true
+
+	err := svc.SelfDelete(context.Background(), admin.ID)
+	if !errors.Is(err, service.ErrLastAdmin) {
+		t.Fatalf("want ErrLastAdmin for sole admin self-delete, got %v", err)
+	}
+	if _, err := repo.FindByID(context.Background(), admin.ID); err != nil {
+		t.Fatal("admin must still exist after refused self-delete")
+	}
+}
+
+func TestSelfDelete_NonAdminAndSecondAdminAllowed(t *testing.T) {
+	repo := newMockUserRepo()
+	svc := service.NewAdminService(repo)
+	admin1, _ := repo.Create(context.Background(), "a1@test.com", "hash", nil, nil)
+	admin1.IsAdmin = true
+	admin2, _ := repo.Create(context.Background(), "a2@test.com", "hash", nil, nil)
+	admin2.IsAdmin = true
+	user, _ := repo.Create(context.Background(), "u@test.com", "hash", nil, nil)
+
+	if err := svc.SelfDelete(context.Background(), user.ID); err != nil {
+		t.Fatalf("non-admin self-delete: %v", err)
+	}
+	if err := svc.SelfDelete(context.Background(), admin2.ID); err != nil {
+		t.Fatalf("second-admin self-delete (another admin remains): %v", err)
+	}
+	if err := svc.SelfDelete(context.Background(), admin1.ID); !errors.Is(err, service.ErrLastAdmin) {
+		t.Fatalf("want ErrLastAdmin once only one admin remains, got %v", err)
+	}
+}

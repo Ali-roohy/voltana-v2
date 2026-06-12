@@ -47,6 +47,27 @@ export function ratesFromSettings(settings?: Settings | null): Rates {
   };
 }
 
+// The rates a session must be priced with (FEAT-6): its creation-time snapshot.
+// Changing rates later must never re-price old sessions, so the snapshot wins;
+// `fallback` (current settings) applies only to legacy rows without one.
+export function ratesForSession(
+  session: Pick<ChargingSession, "rate_peak_at_time" | "rate_mid_at_time" | "rate_offpeak_at_time">,
+  fallback: Rates,
+): Rates {
+  if (
+    session.rate_peak_at_time != null &&
+    session.rate_mid_at_time != null &&
+    session.rate_offpeak_at_time != null
+  ) {
+    return {
+      peak: session.rate_peak_at_time,
+      mid: session.rate_mid_at_time,
+      offpeak: session.rate_offpeak_at_time,
+    };
+  }
+  return fallback;
+}
+
 // Time-of-use cost breakdown for a session: each segment = energy × its rate, and
 // `total` is always the sum of the three segments (so segments sum to total).
 //

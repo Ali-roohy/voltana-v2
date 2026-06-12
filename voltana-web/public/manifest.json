@@ -1,24 +1,40 @@
 {
-  "name": "Voltana - Electric Car Manager",
-  "short_name": "Voltana",
-  "description": "Manage your electric car with Voltana",
+  "id": "/",
+  "name": "ولتانا — مدیریت خودروی برقی",
+  "short_name": "ولتانا",
+  "description": "مدیریت شارژ، باتری و هزینه خودروی برقی",
+  "lang": "fa",
+  "dir": "rtl",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#007FFF",
   "theme_color": "#007FFF",
   "orientation": "portrait-primary",
   "icons": [
     {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

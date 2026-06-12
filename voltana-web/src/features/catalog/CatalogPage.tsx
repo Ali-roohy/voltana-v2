@@ -66,7 +66,7 @@ export default function CatalogPage() {
   const compareCars = cars.filter((c) => compareIds.includes(c.id));
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen app-page-bg">
       <Header />
       <main className="container space-y-4 px-2 py-4 sm:px-4 sm:py-6">
         <div className="flex flex-wrap items-center justify-between gap-2">

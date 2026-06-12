@@ -78,7 +78,7 @@ export default function AdminUsers() {
     new Date(iso).toLocaleDateString("fa-IR", { year: "numeric", month: "short", day: "numeric" });
 
   return (
-    <div className="min-h-screen bg-background" dir="rtl">
+    <div className="min-h-screen app-page-bg" dir="rtl">
       <Header />
       <div className="container max-w-5xl mx-auto px-4 py-6 space-y-6">
         <Card>
