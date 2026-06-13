@@ -84,7 +84,10 @@ ssh -L 8443:127.0.0.1:8443 root@YOUR_VPS_IP
 nano .env                                 # SMTP_PASSWORD=<from step 9.4>
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
 
-# 12 — Promote your account to admin
+# 12 — Admin promotion (IF NEEDED)
+#   The first registered user automatically becomes admin — normally you can skip this.
+#   Use it only to promote a different/later account, or to restore admin if something
+#   went wrong. Replace the email with the account to promote.
 docker exec voltana-postgres sh -c \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
    -c "UPDATE users SET is_admin=true WHERE email='\''ali.roohi.eng@gmail.com'\'';"'
@@ -263,9 +266,14 @@ bash scripts/deploy.sh
 5. API rebuild (`docker compose up -d --build api nginx`)
 6. Nginx reload
 
-### Phase 6: Bootstrap Admin User
+### Phase 6: Admin User (if needed)
 
-After the first deploy, promote your account to admin:
+**The first registered user automatically becomes admin** (`users.is_admin` is set to
+`NOT EXISTS (SELECT 1 FROM users)` on insert), so normally there is nothing to do here —
+just register your account first.
+
+Use the command below only to **promote a different/later account**, or to **restore admin**
+if something went wrong:
 
 ```bash
 docker exec voltana-postgres sh -c \
