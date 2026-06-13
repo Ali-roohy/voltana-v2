@@ -109,7 +109,7 @@ Required production variables:
 | `SMTP_USER` | `noreply@voltanaev.ir` (mailbox created in Poste admin) |
 | `SMTP_PASSWORD` | Password of the `noreply@` Poste mailbox |
 | `SMTP_FROM` | `noreply@voltanaev.ir` |
-| `VAPID_PUBLIC_KEY` | Fresh prod pair: `npx web-push generate-vapid-keys` (don't reuse dev) |
+| `VAPID_PUBLIC_KEY` | Fresh prod pair: `cd voltana-api && go run ./cmd/genvapid` (don't reuse dev) |
 | `VAPID_PRIVATE_KEY` | …the private half of that pair |
 | `BALE_BOT_TOKEN` | From Bale BotFather |
 | `BALE_BOT_USERNAME` | Your bot's username (without @) |
