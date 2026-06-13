@@ -669,5 +669,5 @@ When you need more capacity:
 | `infra/systemd/voltana-backup.service` | Systemd unit for backup job |
 | `infra/systemd/voltana-backup.timer` | Daily backup timer (03:00 UTC) |
 | `docker-compose.prod.yml` | Compose overlay: ports 80/443, certs, postgres bind-mount, **Poste.io mail** |
-| `docs/DEPLOY.md` | Outdated Phase-3 quick start (superseded — see banner) |
+| `docs/DEPLOY.md` | Local/WSL dev setup + redirect to this guide for production |
 | `docs/DEPLOY_PRODUCTION.md` | This file — canonical guide + copy-paste runbook |
