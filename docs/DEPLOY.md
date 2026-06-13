@@ -1,4 +1,12 @@
-# Voltana — Production Deployment Guide
+# Voltana — Production Deployment Guide (OUTDATED)
+
+> ⚠️ **Superseded — do not follow this file for a voltanaev.ir deploy.**
+> This is the original Phase-3 quick start (third-party SMTP relay, `bootstrap-vps.sh`,
+> single-domain cert) and predates the Poste.io mail server, web push / VAPID, the apex+www
+> redirect, and the mail ports added in TASK-0040/0041.
+> **Use [`docs/DEPLOY_PRODUCTION.md`](DEPLOY_PRODUCTION.md)** — its "Quick Runbook
+> (copy-paste)" section is the canonical, current sequence. This file is kept only for
+> historical reference.
 
 Target: Ubuntu 22.04 LTS VPS, 2 vCPU / 4 GB RAM.
 

@@ -2,8 +2,104 @@
 
 Target: Ubuntu 24.04 LTS VPS, 2 vCPU / 4 GB RAM minimum.
 
-See `docs/DEPLOY.md` for the shorter "quick start" reference.
 This document covers the complete, hardened setup including backups, monitoring, rollback, and scaling.
+The copy-paste runbook below is the canonical deploy sequence; the numbered phases further down
+explain each step in detail.
+
+> ⚠️ Order matters: **DNS → certbot → deploy**. nginx loads the TLS cert at startup, so it
+> will not boot without a cert (`deploy.sh` does not issue one). And certbot's standalone
+> challenge needs DNS already resolving to the VPS.
+
+---
+
+## Quick Runbook (copy-paste — voltanaev.ir)
+
+```bash
+# 1 — SSH in
+ssh root@YOUR_VPS_IP
+
+# 2 — Clone
+git clone https://github.com/Ali-roohy/voltana-v2.git /opt/voltana
+cd /opt/voltana
+
+# 3 — Bootstrap (Docker, Node 20, certbot, UFW incl. mail ports, data dirs)
+bash scripts/bootstrap-vps-prod.sh
+
+# 4 — DNS (set at the registrar, BEFORE certbot — see the DNS Records table below)
+#   A    voltanaev.ir        → VPS_IP
+#   A    www.voltanaev.ir    → VPS_IP
+#   A    mail.voltanaev.ir   → VPS_IP
+#   MX   voltanaev.ir        → mail.voltanaev.ir (priority 10)
+#   TXT  voltanaev.ir        → "v=spf1 mx ~all"
+#   TXT  _dmarc.voltanaev.ir → "v=DMARC1; p=quarantine"
+#   PTR  VPS_IP              → mail.voltanaev.ir   (set at the VPS provider, NOT the registrar)
+# Wait for propagation, then verify:
+dig +short voltanaev.ir            # → VPS_IP
+
+# 5 — TLS cert (BEFORE deploy; one cert, three SANs — Poste reuses it)
+certbot certonly --standalone \
+  -d voltanaev.ir -d www.voltanaev.ir -d mail.voltanaev.ir
+
+# 6 — Generate a fresh VAPID pair (the VPS has Node, not Go)
+npx web-push generate-vapid-keys
+#   → copy the Public + Private keys into .env in the next step
+
+# 7 — Configure .env  (the file MUST be named .env — deploy.sh & compose read .env)
+cp .env.production.example .env          # NOT .env.production
+nano .env
+#   Required:
+#     DOMAIN=voltanaev.ir
+#     APP_URL=https://voltanaev.ir
+#     APP_ENV=production                 # enables the Secure cookie flag
+#     POSTGRES_PASSWORD=<openssl rand -hex 32>
+#     JWT_SECRET=<openssl rand -hex 32>
+#     VAPID_PUBLIC_KEY=<from step 6>
+#     VAPID_PRIVATE_KEY=<from step 6>
+#     SMTP_HOST=mail.voltanaev.ir
+#     SMTP_PORT=587
+#     SMTP_USER=noreply@voltanaev.ir
+#     SMTP_FROM=noreply@voltanaev.ir
+#     SMTP_PASSWORD=<filled in step 9, after the mailbox exists>
+#     BALE_BOT_TOKEN=<from BotFather — ROTATED if ever log-exposed>
+#     BALE_BOT_USERNAME=voltana_ev_bot
+
+# 8 — First deploy
+bash scripts/deploy.sh
+
+# 9 — Poste.io first-run (admin UI is localhost-only — tunnel in)
+ssh -L 8443:127.0.0.1:8443 root@YOUR_VPS_IP
+#   Browse to https://localhost:8443 and complete the wizard:
+#     1. Set the Poste admin password
+#     2. Mail server hostname: mail.voltanaev.ir
+#     3. TLS → custom cert:
+#          /etc/letsencrypt/live/voltanaev.ir/fullchain.pem
+#          /etc/letsencrypt/live/voltanaev.ir/privkey.pem
+#     4. Create mailbox noreply@voltanaev.ir → copy its password
+#     5. Enable DKIM → copy the TXT record it shows
+
+# 10 — DKIM DNS record (add the value from step 9.5 at the registrar)
+#   TXT  <selector>._domainkey.voltanaev.ir → "v=DKIM1; k=rsa; p=…"
+
+# 11 — Put the mailbox password in .env and reload the API
+nano .env                                 # SMTP_PASSWORD=<from step 9.4>
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
+
+# 12 — Promote your account to admin
+docker exec voltana-postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+   -c "UPDATE users SET is_admin=true WHERE email='\''ali.roohi.eng@gmail.com'\'';"'
+
+# 13 — Install systemd (reboot survival)
+cp infra/systemd/voltana.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now voltana
+
+# 14 — Smoke test (see "Production Smoke Test" section for the full checklist)
+curl https://voltanaev.ir/health          # → {"status":"ok"}
+```
+
+Each step is expanded below; the mail-specific steps (9–11) are detailed under
+"Mail Server (Poste.io)", and the deliverability + smoke checks under their own sections.
 
 ---
 
@@ -109,8 +205,12 @@ Required production variables:
 | `SMTP_USER` | `noreply@voltanaev.ir` (mailbox created in Poste admin) |
 | `SMTP_PASSWORD` | Password of the `noreply@` Poste mailbox |
 | `SMTP_FROM` | `noreply@voltanaev.ir` |
-| `VAPID_PUBLIC_KEY` | Fresh prod pair: `cd voltana-api && go run ./cmd/genvapid` (don't reuse dev) |
+| `VAPID_PUBLIC_KEY` | Fresh prod pair: `npx web-push generate-vapid-keys` (don't reuse dev) |
 | `VAPID_PRIVATE_KEY` | …the private half of that pair |
+
+> The VPS only has Node (from bootstrap), not Go — so `npx web-push generate-vapid-keys` is the
+> generator to use here. On a dev host with the Go toolchain you can instead run
+> `cd voltana-api && go run ./cmd/genvapid`, which prints the same `VAPID_*` env block.
 | `BALE_BOT_TOKEN` | From Bale BotFather |
 | `BALE_BOT_USERNAME` | Your bot's username (without @) |
 
@@ -569,5 +669,5 @@ When you need more capacity:
 | `infra/systemd/voltana-backup.service` | Systemd unit for backup job |
 | `infra/systemd/voltana-backup.timer` | Daily backup timer (03:00 UTC) |
 | `docker-compose.prod.yml` | Compose overlay: ports 80/443, certs, postgres bind-mount, **Poste.io mail** |
-| `docs/DEPLOY.md` | Quick-start reference |
-| `docs/DEPLOY_PRODUCTION.md` | This file — full production operations guide |
+| `docs/DEPLOY.md` | Outdated Phase-3 quick start (superseded — see banner) |
+| `docs/DEPLOY_PRODUCTION.md` | This file — canonical guide + copy-paste runbook |
