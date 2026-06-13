@@ -7,6 +7,7 @@
 #   - nginx: exposes port 443, mounts Let's Encrypt certs + certbot webroot
 #             + voltana-web/dist for React SPA static serving
 #   - mailhog: gated behind the "dev" profile (not started in production)
+#   - poste:  self-hosted mail server (Poste.io) — production transactional email
 
 services:
   postgres:
@@ -30,3 +31,44 @@ services:
   mailhog:
     profiles:
       - dev
+
+  # ── Poste.io — self-hosted mail server ──────────────────────────────────────
+  # Production transactional email (noreply@voltanaev.ir verification mails).
+  # Replaces MailHog, which is dev-only. See docs/DEPLOY_PRODUCTION.md → "Mail
+  # Server (Poste.io)" for first-run setup, mailbox + DKIM, and the TLS approach.
+  #
+  # TLS: reuses the certbot cert (the voltanaev.ir cert is issued with
+  # mail.voltanaev.ir as a SAN) mounted read-only; point Poste's admin → TLS at
+  # /etc/letsencrypt/live/voltanaev.ir/{fullchain,privkey}.pem. This avoids a
+  # port-80 fight with nginx for Poste's own Let's Encrypt.
+  #
+  # Ports: only the TLS/MX subset (25, 465, 587, 993) is published on 0.0.0.0 and
+  # opened in UFW. The admin UI (8443) and plaintext POP3/IMAP (110/143/995) bind
+  # to 127.0.0.1 only — reach the admin via an SSH tunnel. NOTE: Docker publishes
+  # ports straight into the DOCKER iptables chain and BYPASSES UFW, so a localhost
+  # bind (not a UFW rule) is what actually keeps those private.
+  poste:
+    image: analogic/poste.io
+    container_name: voltana-mail
+    hostname: mail.voltanaev.ir
+    restart: unless-stopped
+    environment:
+      HTTPS: "ON"
+      # Move Poste's bundled web server off 80/443 — nginx owns those on the host.
+      HTTP_PORT: "8080"
+      HTTPS_PORT: "8443"
+      # 4 GB host: ClamAV alone needs ~1 GB resident. Disable to stay within budget
+      # (alongside postgres + redis + api + nginx). Remove on a larger VPS to scan mail.
+      DISABLE_CLAMAV: "TRUE"
+    ports:
+      - "25:25"                  # SMTP — inbound MX + relay
+      - "587:587"                # submission (STARTTLS) — the Voltana API uses this
+      - "465:465"                # submission (implicit TLS)
+      - "993:993"                # IMAPS
+      - "127.0.0.1:110:110"      # POP3 (plaintext)  — localhost only
+      - "127.0.0.1:143:143"      # IMAP (plaintext)  — localhost only
+      - "127.0.0.1:995:995"      # POP3S             — localhost only (not in UFW set)
+      - "127.0.0.1:8443:8443"    # admin UI          — localhost only; SSH-tunnel to reach
+    volumes:
+      - /var/lib/voltana/mail:/data
+      - /etc/letsencrypt:/etc/letsencrypt:ro

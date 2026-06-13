@@ -84,15 +84,16 @@ chown "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_DIR"
 DATA_DIR=/var/lib/voltana
 POSTGRES_DIR="$DATA_DIR/postgres"
 BACKUP_DIR="$DATA_DIR/backups"
+MAIL_DIR="$DATA_DIR/mail"
 
-for DIR in "$DATA_DIR" "$POSTGRES_DIR" "$BACKUP_DIR"; do
+for DIR in "$DATA_DIR" "$POSTGRES_DIR" "$BACKUP_DIR" "$MAIL_DIR"; do
     if [[ ! -d "$DIR" ]]; then
         info "Creating $DIR…"
         mkdir -p "$DIR"
     fi
 done
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DATA_DIR"
-info "Data directories ready: $POSTGRES_DIR · $BACKUP_DIR"
+info "Data directories ready: $POSTGRES_DIR · $BACKUP_DIR · $MAIL_DIR (Poste.io)"
 
 # ── 8. UFW firewall ───────────────────────────────────────────────────────────
 info "Configuring UFW firewall…"
@@ -102,6 +103,14 @@ ufw default allow outgoing
 ufw allow 22/tcp   comment 'SSH'
 ufw allow 80/tcp   comment 'HTTP'
 ufw allow 443/tcp  comment 'HTTPS'
+# Mail (Poste.io) — TLS/MX subset only. Plaintext POP3/IMAP (110/143/995) and the
+# admin UI (8443) are bound to 127.0.0.1 in compose, so they are intentionally
+# absent here. NOTE: Docker publishes ports into its own iptables chain and
+# bypasses UFW; these allows document intent — the localhost binds are the real guard.
+ufw allow 25/tcp   comment 'SMTP (MX)'
+ufw allow 465/tcp  comment 'SMTPS'
+ufw allow 587/tcp  comment 'SMTP submission (STARTTLS)'
+ufw allow 993/tcp  comment 'IMAPS'
 ufw --force enable
 info "UFW enabled. Active rules:"
 ufw status verbose
@@ -131,8 +140,8 @@ echo ""
 warn "Next steps — follow docs/DEPLOY_PRODUCTION.md for the full guide:"
 warn "  1. Clone repo to $DEPLOY_DIR (or git pull if already cloned)."
 warn "  2. Copy .env.production.example to $DEPLOY_DIR/.env and fill in all values."
-warn "  3. Obtain TLS certificate (while ports 80/443 are free):"
-warn "       certbot certonly --standalone -d \$DOMAIN"
+warn "  3. Obtain TLS certificate (while ports 80/443 are free); include www + mail SANs:"
+warn "       certbot certonly --standalone -d \$DOMAIN -d www.\$DOMAIN -d mail.\$DOMAIN"
 warn "  4. Install and enable the main systemd service:"
 warn "       cp $DEPLOY_DIR/infra/systemd/voltana.service /etc/systemd/system/"
 warn "       systemctl daemon-reload"
