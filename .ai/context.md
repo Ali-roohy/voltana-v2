@@ -337,3 +337,6 @@ already returns — **no backend/DB/migration work** in any of the three):
 - Dev machine: WSL2 / Linux
 - Target server: Ubuntu VPS, 2 vCPU / 4 GB RAM
 - Docker Compose for all services
+- **Domain: voltanaev.duckdns.org** (DuckDNS, temporary until voltanaev.ir is ready)
+- **VPS IP: 84.241.6.91**
+- **Email deliverability limited** (no SPF/DKIM on DuckDNS) — use OTP as primary auth
