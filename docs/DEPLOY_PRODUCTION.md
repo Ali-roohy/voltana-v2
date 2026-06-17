@@ -10,9 +10,14 @@ explain each step in detail.
 > will not boot without a cert (`deploy.sh` does not issue one). And certbot's standalone
 > challenge needs DNS already resolving to the VPS.
 
+> ℹ️ **DuckDNS domain.** `voltanaev.duckdns.org` is a free DuckDNS subdomain. DuckDNS gives
+> you a **single subdomain only** — there is no `www.`, no `mail.`, and you cannot set
+> `MX`/`SPF`/`DKIM`/`DMARC`/`PTR` records. The app and TLS work fine; only outbound email
+> deliverability is affected (see the Mail and Deliverability sections).
+
 ---
 
-## Quick Runbook (copy-paste — voltanaev.ir)
+## Quick Runbook (copy-paste — voltanaev.duckdns.org)
 
 ```bash
 # 1 — SSH in
@@ -25,20 +30,16 @@ cd /opt/voltana
 # 3 — Bootstrap (Docker, Node 20, certbot, UFW incl. mail ports, data dirs)
 bash scripts/bootstrap-vps-prod.sh
 
-# 4 — DNS (set at the registrar, BEFORE certbot — see the DNS Records table below)
-#   A    voltanaev.ir        → VPS_IP
-#   A    www.voltanaev.ir    → VPS_IP
-#   A    mail.voltanaev.ir   → VPS_IP
-#   MX   voltanaev.ir        → mail.voltanaev.ir (priority 10)
-#   TXT  voltanaev.ir        → "v=spf1 mx ~all"
-#   TXT  _dmarc.voltanaev.ir → "v=DMARC1; p=quarantine"
-#   PTR  VPS_IP              → mail.voltanaev.ir   (set at the VPS provider, NOT the registrar)
+# 4 — DNS (DuckDNS — point the subdomain at the VPS IP, BEFORE certbot)
+#   At https://www.duckdns.org set the "current ip" of the `voltanaev` domain to VPS_IP,
+#   or update it from the VPS itself:
+#     curl "https://www.duckdns.org/update?domains=voltanaev&token=YOUR_DUCKDNS_TOKEN&ip="
+#   (empty ip= lets DuckDNS auto-detect the caller's IP)
 # Wait for propagation, then verify:
-dig +short voltanaev.ir            # → VPS_IP
+dig +short voltanaev.duckdns.org   # → VPS_IP
 
-# 5 — TLS cert (BEFORE deploy; one cert, three SANs — Poste reuses it)
-certbot certonly --standalone \
-  -d voltanaev.ir -d www.voltanaev.ir -d mail.voltanaev.ir
+# 5 — TLS cert (BEFORE deploy; single domain — Poste reuses it)
+certbot certonly --standalone -d voltanaev.duckdns.org
 
 # 6 — Generate a fresh VAPID pair (the VPS has Node, not Go)
 npx web-push generate-vapid-keys
@@ -48,17 +49,17 @@ npx web-push generate-vapid-keys
 cp .env.production.example .env          # NOT .env.production
 nano .env
 #   Required:
-#     DOMAIN=voltanaev.ir
-#     APP_URL=https://voltanaev.ir
+#     DOMAIN=voltanaev.duckdns.org
+#     APP_URL=https://voltanaev.duckdns.org
 #     APP_ENV=production                 # enables the Secure cookie flag
 #     POSTGRES_PASSWORD=<openssl rand -hex 32>
 #     JWT_SECRET=<openssl rand -hex 32>
 #     VAPID_PUBLIC_KEY=<from step 6>
 #     VAPID_PRIVATE_KEY=<from step 6>
-#     SMTP_HOST=mail.voltanaev.ir
+#     SMTP_HOST=voltanaev.duckdns.org
 #     SMTP_PORT=587
-#     SMTP_USER=noreply@voltanaev.ir
-#     SMTP_FROM=noreply@voltanaev.ir
+#     SMTP_USER=noreply@voltanaev.duckdns.org
+#     SMTP_FROM=noreply@voltanaev.duckdns.org
 #     SMTP_PASSWORD=<filled in step 9, after the mailbox exists>
 #     BALE_BOT_TOKEN=<from BotFather — ROTATED if ever log-exposed>
 #     BALE_BOT_USERNAME=voltana_ev_bot
@@ -70,21 +71,19 @@ bash scripts/deploy.sh
 ssh -L 8443:127.0.0.1:8443 root@YOUR_VPS_IP
 #   Browse to https://localhost:8443 and complete the wizard:
 #     1. Set the Poste admin password
-#     2. Mail server hostname: mail.voltanaev.ir
+#     2. Mail server hostname: voltanaev.duckdns.org
 #     3. TLS → custom cert:
-#          /etc/letsencrypt/live/voltanaev.ir/fullchain.pem
-#          /etc/letsencrypt/live/voltanaev.ir/privkey.pem
-#     4. Create mailbox noreply@voltanaev.ir → copy its password
-#     5. Enable DKIM → copy the TXT record it shows
+#          /etc/letsencrypt/live/voltanaev.duckdns.org/fullchain.pem
+#          /etc/letsencrypt/live/voltanaev.duckdns.org/privkey.pem
+#     4. Create mailbox noreply@voltanaev.duckdns.org → copy its password
+#   (DKIM/SPF/DMARC can't be published on DuckDNS — skip them; expect mail to be
+#    spam-foldered by external providers. Fine for in-app / testing use.)
 
-# 10 — DKIM DNS record (add the value from step 9.5 at the registrar)
-#   TXT  <selector>._domainkey.voltanaev.ir → "v=DKIM1; k=rsa; p=…"
-
-# 11 — Put the mailbox password in .env and reload the API
+# 10 — Put the mailbox password in .env and reload the API
 nano .env                                 # SMTP_PASSWORD=<from step 9.4>
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
 
-# 12 — Admin promotion (IF NEEDED)
+# 11 — Admin promotion (IF NEEDED)
 #   The first registered user automatically becomes admin — normally you can skip this.
 #   Use it only to promote a different/later account, or to restore admin if something
 #   went wrong. Replace the email with the account to promote.
@@ -92,16 +91,16 @@ docker exec voltana-postgres sh -c \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
    -c "UPDATE users SET is_admin=true WHERE email='\''ali.roohi.eng@gmail.com'\'';"'
 
-# 13 — Install systemd (reboot survival)
+# 12 — Install systemd (reboot survival)
 cp infra/systemd/voltana.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now voltana
 
-# 14 — Smoke test (see "Production Smoke Test" section for the full checklist)
-curl https://voltanaev.ir/health          # → {"status":"ok"}
+# 13 — Smoke test (see "Production Smoke Test" section for the full checklist)
+curl https://voltanaev.duckdns.org/health  # → {"status":"ok"}
 ```
 
-Each step is expanded below; the mail-specific steps (9–11) are detailed under
+Each step is expanded below; the mail-specific steps (9–10) are detailed under
 "Mail Server (Poste.io)", and the deliverability + smoke checks under their own sections.
 
 ---
@@ -113,10 +112,9 @@ Before starting, ensure you have:
 - A VPS with public IPv4, Ubuntu 24.04 LTS, ≥ 2 vCPU / 4 GB RAM
   - **Recommended location: Iran** — Bale (and Telegram) are directly reachable, which is
     required for OTP delivery and unblocks the contact-share OTP flow.
-- The domain **voltanaev.ir** with the DNS records below pointing at the VPS IP
-  - Verify propagation: `dig +short voltanaev.ir` · `dig +short mail.voltanaev.ir`
-- **PTR / reverse-DNS** for the VPS IP set to `mail.voltanaev.ir` (at the VPS provider —
-  see DNS section; critical for email deliverability)
+- The DuckDNS subdomain **voltanaev.duckdns.org** pointing at the VPS IP (see DNS section)
+  - Verify propagation: `dig +short voltanaev.duckdns.org`
+- A **DuckDNS account + token** (from <https://www.duckdns.org>) to manage the subdomain's IP
 - SSH access as root (or a user with `sudo`)
 - Bale bot token (get from BotFather on Bale) — required for OTP login
 
@@ -125,34 +123,36 @@ Before starting, ensure you have:
 
 ---
 
-## DNS Records (voltanaev.ir)
+## DNS (voltanaev.duckdns.org)
 
-Create these at the Iranian registrar. Replace `VPS_IP` with your server's public IPv4.
+DuckDNS only exposes the subdomain's **A record** (its "current ip"). There is no
+registrar zone editor — you point the subdomain at the VPS from the DuckDNS dashboard or
+its update URL. **No www, no mail.* subdomain, and no MX/SPF/DKIM/DMARC/PTR are possible.**
 
-| Type | Host / Name | Value | Notes |
-|---|---|---|---|
-| A | `voltanaev.ir` (apex / `@`) | `VPS_IP` | the app |
-| A | `www.voltanaev.ir` | `VPS_IP` | nginx 301-redirects www → apex |
-| A | `mail.voltanaev.ir` | `VPS_IP` | Poste.io mail server |
-| MX | `voltanaev.ir` (`@`) | `mail.voltanaev.ir` (priority **10**) | routes inbound mail to Poste |
-| TXT (SPF) | `voltanaev.ir` (`@`) | `v=spf1 mx ~all` | authorises the MX host to send |
-| TXT (DMARC) | `_dmarc.voltanaev.ir` | `v=DMARC1; p=quarantine` | policy for failing mail |
-| TXT (DKIM) | `<selector>._domainkey.voltanaev.ir` | *(generated by Poste.io)* | **added after** Poste install — see Mail section |
+Set the IP (replace `VPS_IP` and `YOUR_DUCKDNS_TOKEN`):
 
-**PTR / reverse-DNS (set at the VPS provider, NOT the registrar):**
-point `VPS_IP` → `mail.voltanaev.ir`. Many mail providers (Gmail included) reject or
-spam-folder mail from IPs whose PTR doesn't resolve back to the sending hostname. This is
-the single most common cause of "verification email went to spam."
+```bash
+# From the DuckDNS dashboard: set the "current ip" of `voltanaev` to VPS_IP.
+# Or from the VPS / any host:
+curl "https://www.duckdns.org/update?domains=voltanaev&token=YOUR_DUCKDNS_TOKEN&ip=VPS_IP"
+#   → returns "OK". Omit the ip value (ip=) to let DuckDNS auto-detect the caller's IP.
+```
+
+> 💡 To keep the record fresh on a dynamic IP, add a cron entry on the VPS:
+> ```
+> */5 * * * * curl -s "https://www.duckdns.org/update?domains=voltanaev&token=YOUR_DUCKDNS_TOKEN&ip=" >/dev/null
+> ```
 
 Verify once propagated:
 ```bash
-dig +short voltanaev.ir
-dig +short www.voltanaev.ir
-dig +short mail.voltanaev.ir
-dig +short MX voltanaev.ir
-dig +short TXT voltanaev.ir
-dig -x VPS_IP +short          # → mail.voltanaev.ir.   (PTR check)
+dig +short voltanaev.duckdns.org   # → VPS_IP
 ```
+
+> ⚠️ **Email deliverability is limited on DuckDNS.** Because you cannot publish
+> MX/SPF/DKIM/DMARC records or set a PTR for the IP, mail sent from
+> `noreply@voltanaev.duckdns.org` will be spam-foldered or rejected by most external
+> providers (Gmail etc.). The self-hosted Poste.io mailbox still works for in-app /
+> testing use; use a real owned domain when deliverable verification email matters.
 
 ---
 
@@ -199,15 +199,15 @@ Required production variables:
 
 | Variable | Notes |
 |---|---|
-| `DOMAIN` | Apex only, no `https://`, no `www`: `voltanaev.ir` |
-| `APP_URL` | `https://voltanaev.ir` |
+| `DOMAIN` | The DuckDNS subdomain, no `https://`: `voltanaev.duckdns.org` |
+| `APP_URL` | `https://voltanaev.duckdns.org` |
 | `APP_ENV` | Must be `production` — enables Secure cookie flag |
 | `POSTGRES_PASSWORD` | Strong random; `openssl rand -hex 32` |
 | `JWT_SECRET` | Strong random; `openssl rand -hex 32` |
-| `SMTP_HOST` | `mail.voltanaev.ir` (the Poste.io container) |
-| `SMTP_USER` | `noreply@voltanaev.ir` (mailbox created in Poste admin) |
+| `SMTP_HOST` | `voltanaev.duckdns.org` (the Poste.io container; no mail.* subdomain on DuckDNS) |
+| `SMTP_USER` | `noreply@voltanaev.duckdns.org` (mailbox created in Poste admin) |
 | `SMTP_PASSWORD` | Password of the `noreply@` Poste mailbox |
-| `SMTP_FROM` | `noreply@voltanaev.ir` |
+| `SMTP_FROM` | `noreply@voltanaev.duckdns.org` |
 | `VAPID_PUBLIC_KEY` | Fresh prod pair: `npx web-push generate-vapid-keys` (don't reuse dev) |
 | `VAPID_PRIVATE_KEY` | …the private half of that pair |
 
@@ -223,17 +223,16 @@ Required production variables:
 ### Phase 3: TLS Certificate
 
 Certbot needs ports 80/443 free. Do this **before** starting the full stack.
-Issue **one** cert covering the apex, www, and mail hostnames — Poste.io reuses it
-(no separate mail cert, no port-80 fight):
+Issue **one** cert for the single DuckDNS subdomain — Poste.io reuses it (no separate
+mail cert, no port-80 fight):
 
 ```bash
-DOMAIN=voltanaev.ir
-certbot certonly --standalone \
-  -d "$DOMAIN" -d "www.$DOMAIN" -d "mail.$DOMAIN"
+DOMAIN=voltanaev.duckdns.org
+certbot certonly --standalone -d "$DOMAIN"
 ```
 
-Certificates land at `/etc/letsencrypt/live/$DOMAIN/` (the dir is named after the first
-`-d`, i.e. `voltanaev.ir`, even though the cert has all three SANs).
+Certificates land at `/etc/letsencrypt/live/$DOMAIN/`, i.e.
+`/etc/letsencrypt/live/voltanaev.duckdns.org/`.
 
 Set up auto-renewal — reload **both** nginx and Poste so each picks up the renewed cert:
 
@@ -292,21 +291,19 @@ systemctl status voltana
 
 ```bash
 # API health
-curl https://voltanaev.ir/health
+curl https://voltanaev.duckdns.org/health
 # → {"status":"ok"}
 
-# HTTP → HTTPS redirect, and www → apex
-curl -I http://voltanaev.ir/
-# → HTTP/1.1 301
-curl -I https://www.voltanaev.ir/
-# → HTTP/1.1 301  (Location: https://voltanaev.ir/)
+# HTTP → HTTPS redirect
+curl -I http://voltanaev.duckdns.org/
+# → HTTP/1.1 301  (Location: https://voltanaev.duckdns.org/)
 
 # Security headers
-curl -sI https://voltanaev.ir/health \
+curl -sI https://voltanaev.duckdns.org/health \
   | grep -E "Strict-Transport|X-Frame|X-Content"
 
 # API auth is working
-curl -s https://voltanaev.ir/v1/me
+curl -s https://voltanaev.duckdns.org/v1/me
 # → {"code":"UNAUTHORIZED",...}  (401 is correct — not 502)
 ```
 
@@ -346,13 +343,15 @@ Voltana sends verification emails through a self-hosted **Poste.io** container
 ### How it's wired
 
 - The `poste` service publishes the TLS/MX mail ports (**25, 465, 587, 993**) on the host;
-  the Voltana API connects to it at `SMTP_HOST=mail.voltanaev.ir:587` (STARTTLS).
+  the Voltana API connects to it at `SMTP_HOST=voltanaev.duckdns.org:587` (STARTTLS).
 - The admin UI (**8443**) and plaintext POP3/IMAP (**110/143/995**) are bound to
   `127.0.0.1` only — they are **not** reachable from the internet. Reach the admin via an
   SSH tunnel (below).
 - Mail data persists at `/var/lib/voltana/mail`.
-- **TLS:** Poste reuses the certbot cert (issued with `mail.voltanaev.ir` as a SAN). The
-  cert dir is mounted read-only; you point Poste at it in the admin (step 4).
+- **TLS:** Poste reuses the certbot cert (issued for `voltanaev.duckdns.org`). The cert dir
+  is mounted read-only; you point Poste at it in the admin (step 4).
+- **DuckDNS limit:** no `mail.*` subdomain and no MX/SPF/DKIM/DMARC/PTR are possible, so
+  mail to external providers will be spam-foldered or rejected. Usable for in-app / testing.
 - **Memory:** ClamAV is disabled (`DISABLE_CLAMAV=TRUE`) to fit the 4 GB host. Remove that
   env var only on a larger VPS if you want attachment scanning.
 
@@ -377,11 +376,11 @@ Voltana sends verification emails through a self-hosted **Poste.io** container
    # then browse to:  https://localhost:8443
    ```
    Complete the Poste first-run wizard. Set the **mail server hostname** to
-   `mail.voltanaev.ir` and create the admin account.
+   `voltanaev.duckdns.org` and create the admin account.
 
-3. **Create the sending mailbox.** In the admin: *Virtual domains → voltanaev.ir →
-   Manage → Create box* → `noreply@voltanaev.ir` with a strong password. Put that password
-   in `/opt/voltana/.env` as `SMTP_PASSWORD`, then redeploy the API so it picks it up:
+3. **Create the sending mailbox.** In the admin: *Virtual domains → voltanaev.duckdns.org →
+   Manage → Create box* → `noreply@voltanaev.duckdns.org` with a strong password. Put that
+   password in `/opt/voltana/.env` as `SMTP_PASSWORD`, then redeploy the API so it picks it up:
    ```bash
    nano /opt/voltana/.env          # set SMTP_PASSWORD
    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api
@@ -389,44 +388,43 @@ Voltana sends verification emails through a self-hosted **Poste.io** container
 
 4. **Point Poste at the certbot cert.** Admin → *System settings → TLS certificate* →
    choose the custom/existing option and set:
-   - Certificate: `/etc/letsencrypt/live/voltanaev.ir/fullchain.pem`
-   - Private key: `/etc/letsencrypt/live/voltanaev.ir/privkey.pem`
+   - Certificate: `/etc/letsencrypt/live/voltanaev.duckdns.org/fullchain.pem`
+   - Private key: `/etc/letsencrypt/live/voltanaev.duckdns.org/privkey.pem`
 
    Save. (These are mounted read-only into the container.)
 
-5. **Generate DKIM and publish it to DNS.** Admin → *Virtual domains → voltanaev.ir →
-   DKIM* → enable/generate. Poste shows a TXT record like
-   `<selector>._domainkey.voltanaev.ir → v=DKIM1; k=rsa; p=…`. Add that **exact** record at
-   the registrar (this is the DKIM row left blank in the DNS table above). Verify:
-   ```bash
-   dig +short TXT <selector>._domainkey.voltanaev.ir
-   ```
+5. **DKIM/SPF/DMARC — not available on DuckDNS.** These require publishing TXT/MX records on
+   the domain, which DuckDNS does not allow. Skip them. Without them (and without a PTR for
+   the IP), external providers like Gmail will spam-folder or reject the mail — this is
+   expected on a DuckDNS domain. Use a real owned domain if deliverable email is required.
 
 ### Send a test from the API
 
-After the mailbox exists and the API has restarted, register a new account with a real
-Gmail address — the verification email should arrive in the **inbox** (see the
-deliverability checklist if it lands in spam).
+After the mailbox exists and the API has restarted, register a new account — the
+verification email is sent via Poste. On a DuckDNS domain expect external recipients
+(Gmail etc.) to spam-folder or reject it; an internal test mailbox is the reliable check.
 
 ---
 
 ## Deliverability Checklist
 
-Run through this before announcing the domain. Goal: a **mail-tester.com score ≥ 8/10**.
+> ⚠️ **DuckDNS cannot pass a real deliverability audit.** MX/SPF/DKIM/DMARC and PTR all
+> require DNS/zone control that DuckDNS does not provide, so a mail-tester.com run will
+> score low and Gmail/Outlook will spam-folder or reject mail from
+> `noreply@voltanaev.duckdns.org`. This is expected and **not** a deploy bug. The Poste.io
+> mailbox is still fine for in-app / internal testing. To get deliverable verification
+> email, move to a **real owned domain** and follow the SPF/DKIM/DMARC/PTR steps from the
+> mail provider's docs.
 
-- [ ] **PTR / reverse-DNS**: `dig -x VPS_IP +short` → `mail.voltanaev.ir.` (set at the VPS
-      provider). Without this, Gmail spam-folders or rejects.
-- [ ] **A record**: `mail.voltanaev.ir` → VPS IP.
-- [ ] **MX record**: `voltanaev.ir` → `mail.voltanaev.ir` (priority 10).
-- [ ] **SPF**: `voltanaev.ir` TXT = `v=spf1 mx ~all`.
-- [ ] **DKIM**: `<selector>._domainkey.voltanaev.ir` TXT present (from Poste step 5) and the
-      domain shows DKIM "active" in the Poste admin.
-- [ ] **DMARC**: `_dmarc.voltanaev.ir` TXT = `v=DMARC1; p=quarantine`.
-- [ ] **Valid TLS on the mail host**: Poste uses the `mail.voltanaev.ir` SAN cert.
-- [ ] **mail-tester**: send a message from `noreply@voltanaev.ir` to the address shown at
-      <https://www.mail-tester.com> → score **≥ 8/10**; fix any item it flags.
-- [ ] **Real-inbox test**: register with a Gmail address → verification email lands in
-      **Inbox**, not Spam.
+What you can still verify on DuckDNS:
+
+- [ ] **A record**: `dig +short voltanaev.duckdns.org` → VPS IP.
+- [ ] **Valid TLS on the mail host**: Poste uses the `voltanaev.duckdns.org` cert (the same
+      one nginx serves).
+- [ ] **SMTP reachable**: the API logs show mail sent without an SMTP error
+      (`docker compose logs api | grep -i mail`).
+- [ ] **Internal mailbox test**: mail sent to another mailbox on the same Poste server
+      arrives (external delivery is the part DuckDNS can't satisfy).
 
 ---
 
@@ -437,15 +435,14 @@ Operator-run after the deploy completes. This is the pass that retires the stand
 
 1. **App loads over HTTPS with a valid cert**
    ```bash
-   curl -I https://voltanaev.ir/          # → 200, valid TLS
-   curl -I https://www.voltanaev.ir/      # → 301 → https://voltanaev.ir/
-   curl -I http://voltanaev.ir/           # → 301 → https
+   curl -I https://voltanaev.duckdns.org/   # → 200, valid TLS
+   curl -I http://voltanaev.duckdns.org/    # → 301 → https://voltanaev.duckdns.org/
    ```
-   In a browser: `https://voltanaev.ir` loads, padlock valid.
+   In a browser: `https://voltanaev.duckdns.org` loads, padlock valid.
 
-2. **Email verification end-to-end (real inbox)** — register with a real Gmail address →
-   the verification email arrives in the **Inbox** (not Spam) → clicking the link verifies
-   the account and login succeeds.
+2. **Email verification end-to-end** — register an account → the verification email is sent
+   via Poste. On DuckDNS, external delivery (Gmail etc.) is unreliable; verify against an
+   internal Poste mailbox, or check the API logs confirm the send.
 
 3. **OTP via Bale** — request an OTP / link the bot. On the Iranian VPS the
    contact-share flow is reachable for the first time; confirm the code arrives in Bale and
@@ -454,8 +451,8 @@ Operator-run after the deploy completes. This is the pass that retires the stand
 4. **Web push** — in Settings → Notifications, enable push, accept the browser permission,
    and confirm the admin "test push" notification is received on the device.
 
-5. **PWA install** — from `https://voltanaev.ir`, the browser offers "Install"; the
-   installed app opens standalone at the apex URL (manifest `scope`/`start_url` = `/`).
+5. **PWA install** — from `https://voltanaev.duckdns.org`, the browser offers "Install"; the
+   installed app opens standalone at the domain root (manifest `scope`/`start_url` = `/`).
 
 ---
 
@@ -606,7 +603,7 @@ journalctl -u voltana-backup.service --since "24 hours ago"
 | Backup not running | `systemctl status voltana-backup.timer`; check `POSTGRES_CONTAINER` matches running container name |
 | Backup fails: container not found | `docker ps --format '{{.Names}}'` — find actual postgres container name, update `.env` |
 | DB disk full | Postgres data at `/var/lib/voltana/postgres`; check `du -sh /var/lib/voltana/` |
-| Email not delivered | `docker compose logs poste`; test SMTP: `swaks --to you@gmail.com --from noreply@voltanaev.ir --server mail.voltanaev.ir:587 -tls` |
+| Email not delivered | `docker compose logs poste`; test SMTP: `swaks --to you@gmail.com --from noreply@voltanaev.duckdns.org --server voltanaev.duckdns.org:587 -tls` (note: external delivery is unreliable on DuckDNS — no SPF/DKIM/MX/PTR) |
 | Email lands in spam | Run the Deliverability Checklist — usually missing PTR or DKIM not published |
 | Poste admin unreachable | It's bound to `127.0.0.1:8443` — tunnel first: `ssh -L 8443:127.0.0.1:8443 root@VPS_IP` |
 | Mail port 25 blocked | Some VPS providers block outbound 25 by default — open a support ticket to unblock |

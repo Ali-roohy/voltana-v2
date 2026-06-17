@@ -33,14 +33,16 @@ services:
       - dev
 
   # ── Poste.io — self-hosted mail server ──────────────────────────────────────
-  # Production transactional email (noreply@voltanaev.ir verification mails).
+  # Production transactional email (noreply@voltanaev.duckdns.org verification mails).
   # Replaces MailHog, which is dev-only. See docs/DEPLOY_PRODUCTION.md → "Mail
-  # Server (Poste.io)" for first-run setup, mailbox + DKIM, and the TLS approach.
+  # Server (Poste.io)" for first-run setup and the TLS approach. NOTE: DuckDNS has
+  # no mail.* subdomain and no SPF/DKIM/MX/PTR, so external delivery is unreliable —
+  # usable for in-app / testing mail only.
   #
-  # TLS: reuses the certbot cert (the voltanaev.ir cert is issued with
-  # mail.voltanaev.ir as a SAN) mounted read-only; point Poste's admin → TLS at
-  # /etc/letsencrypt/live/voltanaev.ir/{fullchain,privkey}.pem. This avoids a
-  # port-80 fight with nginx for Poste's own Let's Encrypt.
+  # TLS: reuses the certbot cert (issued for voltanaev.duckdns.org) mounted
+  # read-only; point Poste's admin → TLS at
+  # /etc/letsencrypt/live/voltanaev.duckdns.org/{fullchain,privkey}.pem. This avoids
+  # a port-80 fight with nginx for Poste's own Let's Encrypt.
   #
   # Ports: only the TLS/MX subset (25, 465, 587, 993) is published on 0.0.0.0 and
   # opened in UFW. The admin UI (8443) and plaintext POP3/IMAP (110/143/995) bind
@@ -50,7 +52,7 @@ services:
   poste:
     image: analogic/poste.io
     container_name: voltana-mail
-    hostname: mail.voltanaev.ir
+    hostname: voltanaev.duckdns.org
     restart: unless-stopped
     environment:
       HTTPS: "ON"

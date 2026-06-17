@@ -1,12 +1,12 @@
 # Deployment Guide
 
-## Production Deployment (voltanaev.ir)
+## Production Deployment (voltanaev.duckdns.org)
 
 The complete production deployment guide is in:
 → [DEPLOY_PRODUCTION.md](./DEPLOY_PRODUCTION.md)
 
 Covers: VPS bootstrap, DNS, TLS, Poste.io mail server, VAPID keys, bot tokens, systemd,
-backups, and the 14-step copy-paste runbook.
+backups, and the copy-paste runbook.
 
 ---
 
