@@ -27,7 +27,13 @@ info "Installing base packages…"
 apt-get install -y -q \
     ca-certificates curl gnupg lsb-release \
     ufw git gettext-base certbot python3-certbot-nginx \
-    unzip awscli
+    unzip
+
+# awscli is only needed for optional S3 backup uploads. On Ubuntu 24.04 the apt
+# package was dropped, so install it best-effort and don't fail the bootstrap if
+# it's unavailable — S3 backups simply stay disabled (local backups still work).
+info "Installing awscli (optional — for S3 backups)…"
+apt-get install -y -q awscli || echo "[bootstrap] awscli not available — S3 backups disabled"
 
 # ── 3. Node.js 20 (LTS) via NodeSource ───────────────────────────────────────
 NODE_OK=false
