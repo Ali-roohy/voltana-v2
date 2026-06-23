@@ -50,6 +50,16 @@ type ChargingSession struct {
 	// 100) when this and the previous session both have an odometer reading and the
 	// distance is positive; otherwise nil. Computed in the service, not stored.
 	EfficiencyKWhPer100km *float64 `json:"efficiency_kwh_per_100km"`
+	// Warnings are non-blocking suspicious-data flags (TASK-0042 FEAT-5), computed
+	// per session in the service. Always serialized (empty slice = no warnings).
+	Warnings []SessionWarning `json:"warnings"`
+}
+
+// SessionWarning is a non-blocking data-quality flag on a charging session. Message
+// is Persian and surfaced verbatim by the UI (inline at entry + on hover in the list).
+type SessionWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // ChargingInput carries the mutable fields of a charging session for create/update.

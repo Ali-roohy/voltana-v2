@@ -94,8 +94,45 @@ func (s *ChargingService) List(ctx context.Context, userID uuid.UUID, f domain.C
 	}
 	for i := range items {
 		setSessionEfficiency(&items[i])
+		setSessionWarnings(&items[i])
 	}
 	return items, total, nil
+}
+
+// Suspicious-data thresholds (FEAT-5). The efficiency band mirrors the aggregate
+// sanity guard (BUG-4); duration is "implausible" when the energy/power estimate
+// is off by more than 2× either way from the entered duration.
+const (
+	warnEffMin       = 5.0
+	warnEffMax       = 40.0
+	durationMismatch = 2.0
+)
+
+// setSessionWarnings computes the non-blocking data-quality flags for a session
+// (FEAT-5). Always assigns a (possibly empty) slice so the JSON is `[]`, not null.
+func setSessionWarnings(s *domain.ChargingSession) {
+	w := []domain.SessionWarning{}
+
+	if s.EfficiencyKWhPer100km != nil && (*s.EfficiencyKWhPer100km > warnEffMax || *s.EfficiencyKWhPer100km < warnEffMin) {
+		w = append(w, domain.SessionWarning{Code: "efficiency_out_of_band", Message: "مصرف غیرعادی (خارج از محدوده ۵ تا ۴۰ کیلووات‌ساعت در ۱۰۰ کیلومتر)"})
+	}
+	if s.StartSOC != nil && s.EndSOC != nil && *s.StartSOC > *s.EndSOC {
+		w = append(w, domain.SessionWarning{Code: "soc_decreasing", Message: "درصد شارژ پایان کمتر از شروع است"})
+	}
+	socChanged := s.StartSOC != nil && s.EndSOC != nil && *s.StartSOC != *s.EndSOC
+	if socChanged && (s.KWhCharged == nil || *s.KWhCharged == 0) {
+		w = append(w, domain.SessionWarning{Code: "zero_energy_soc_changed", Message: "انرژی صفر ثبت شده اما درصد شارژ تغییر کرده است"})
+	}
+	// Duration vs energy/power plausibility: predicted hours = energy / power.
+	if s.EndedAt != nil && s.ChargePowerKW != nil && *s.ChargePowerKW > 0 && s.KWhCharged != nil && *s.KWhCharged > 0 {
+		actualH := s.EndedAt.Sub(s.StartedAt).Hours()
+		predictedH := *s.KWhCharged / *s.ChargePowerKW
+		if actualH > 0 && (predictedH > actualH*durationMismatch || predictedH < actualH/durationMismatch) {
+			w = append(w, domain.SessionWarning{Code: "duration_implausible", Message: "مدت زمان شارژ با انرژی و توان شارژ همخوانی ندارد"})
+		}
+	}
+
+	s.Warnings = w
 }
 
 // setSessionEfficiency derives kWh/100km for a session from its odometer and the

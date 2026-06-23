@@ -295,6 +295,39 @@ func TestCharging_OdometerMustIncrease(t *testing.T) {
 	}
 }
 
+// FEAT-5: List computes non-blocking suspicious-data warnings.
+func TestCharging_SuspiciousDataWarnings(t *testing.T) {
+	owner := uuid.New()
+	svc, carID, _ := newChargingSvc(t, owner, repository.Rates{})
+	ctx := context.Background()
+
+	// SOC decreasing (80→50) on a charge session → soc_decreasing warning.
+	if _, err := svc.Create(ctx, owner, domain.ChargingInput{
+		CarID: carID, StartedAt: time.Now(), StartSOC: ptr(80), EndSOC: ptr(50), KWhCharged: ptr(10.0),
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	items, _, err := svc.List(ctx, owner, domain.ChargingFilter{}, 100, 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 session, got %d", len(items))
+	}
+	if items[0].Warnings == nil {
+		t.Fatal("warnings must be a slice (never nil) for JSON []")
+	}
+	found := false
+	for _, w := range items[0].Warnings {
+		if w.Code == "soc_decreasing" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected soc_decreasing warning, got %+v", items[0].Warnings)
+	}
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestCharging_CostComputedFromPeriods(t *testing.T) {
