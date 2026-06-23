@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"voltana-api/internal/domain"
 
@@ -34,7 +35,20 @@ type ChargingRepository interface {
 	// across consecutive sessions (per car, by time) that both carry an odometer
 	// reading with a positive delta — the inputs for the fleet kWh/100km average.
 	EfficiencyAggregateByUser(ctx context.Context, userID uuid.UUID) (sumKWh, sumKM float64, err error)
+	// PreviousOdometer returns the odometer reading of the nearest earlier session
+	// for the same car (by started_at), skipping the session identified by
+	// excludeID (used on update). nil means there is no earlier session with an
+	// odometer reading. Underpins the cumulative-odometer monotonic check (BUG-4).
+	PreviousOdometer(ctx context.Context, userID, carID uuid.UUID, before time.Time, excludeID uuid.UUID) (*int, error)
 }
+
+// Efficiency sanity band (kWh/100km). Odometer pairs implying a consumption
+// outside this range are excluded from the fleet aggregate so a single bad
+// (or non-cumulative) reading can't poison total_km / avg efficiency (BUG-4).
+const (
+	minPlausibleKWhPer100KM = 5.0
+	maxPlausibleKWhPer100KM = 40.0
+)
 
 type pgxChargingRepository struct {
 	db *pgxpool.Pool
@@ -73,22 +87,51 @@ func (r *pgxChargingRepository) EfficiencyAggregateByUser(ctx context.Context, u
 	// session's odometer (by time). Sum energy + distance only over consecutive
 	// pairs where both readings exist, the delta is positive, and energy is known.
 	var sumKWh, sumKM float64
+	// Only count pairs whose implied consumption is plausible (BUG-4 sanity guard):
+	// km_driven > 0, energy known, and kwh/(km/100) within [min,max]. This keeps a
+	// stray non-cumulative odometer reading from skewing total_km and the average.
 	err := r.db.QueryRow(ctx,
 		`WITH deltas AS (
 			SELECT kwh_charged,
 			       odometer_km - LAG(odometer_km) OVER (PARTITION BY car_id ORDER BY started_at) AS km_driven
 			FROM charging_sessions
 			WHERE user_id = $1
+		 ),
+		 valid AS (
+			SELECT kwh_charged, km_driven
+			FROM deltas
+			WHERE km_driven > 0 AND kwh_charged IS NOT NULL
+			  AND kwh_charged / (km_driven / 100.0) BETWEEN $2 AND $3
 		 )
-		 SELECT COALESCE(SUM(kwh_charged) FILTER (WHERE km_driven > 0 AND kwh_charged IS NOT NULL), 0)::float8,
-		        COALESCE(SUM(km_driven)   FILTER (WHERE km_driven > 0 AND kwh_charged IS NOT NULL), 0)::float8
-		 FROM deltas`,
-		userID,
+		 SELECT COALESCE(SUM(kwh_charged), 0)::float8,
+		        COALESCE(SUM(km_driven),   0)::float8
+		 FROM valid`,
+		userID, minPlausibleKWhPer100KM, maxPlausibleKWhPer100KM,
 	).Scan(&sumKWh, &sumKM)
 	if err != nil {
 		return 0, 0, err
 	}
 	return sumKWh, sumKM, nil
+}
+
+func (r *pgxChargingRepository) PreviousOdometer(ctx context.Context, userID, carID uuid.UUID, before time.Time, excludeID uuid.UUID) (*int, error) {
+	var odo *int
+	err := r.db.QueryRow(ctx,
+		`SELECT odometer_km
+		 FROM charging_sessions
+		 WHERE user_id = $1 AND car_id = $2 AND odometer_km IS NOT NULL
+		   AND started_at < $3 AND id <> $4
+		 ORDER BY started_at DESC
+		 LIMIT 1`,
+		userID, carID, before, excludeID,
+	).Scan(&odo)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return odo, nil
 }
 
 func (r *pgxChargingRepository) Create(ctx context.Context, userID uuid.UUID, in domain.ChargingInput) (*domain.ChargingSession, error) {

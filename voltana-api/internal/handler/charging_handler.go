@@ -172,6 +172,8 @@ func handleChargingError(c *gin.Context, err error) {
 		apiError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 	case errors.Is(err, service.ErrInvalidCarRef):
 		apiError(c, http.StatusUnprocessableEntity, "INVALID_CAR", "car_id does not reference one of your cars")
+	case errors.Is(err, service.ErrOdometerNotIncreasing):
+		apiError(c, http.StatusUnprocessableEntity, "ODOMETER_NOT_INCREASING", err.Error())
 	case errors.Is(err, service.ErrChargingNotFound):
 		apiError(c, http.StatusNotFound, "NOT_FOUND", "charging session not found")
 	default:

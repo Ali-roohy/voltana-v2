@@ -138,11 +138,38 @@ func (m *mockChargingRepo) EfficiencyAggregateByUser(_ context.Context, userID u
 			if km <= 0 {
 				continue
 			}
+			// Mirror the SQL sanity band (BUG-4): drop implausible pairs.
+			eff := *cur.KWhCharged / (float64(km) / 100.0)
+			if eff < 5.0 || eff > 40.0 {
+				continue
+			}
 			sumKWh += *cur.KWhCharged
 			sumKM += float64(km)
 		}
 	}
 	return sumKWh, sumKM, nil
+}
+
+// PreviousOdometer mirrors the SQL: nearest earlier session (by started_at) for
+// the same car with a non-null odometer, excluding excludeID.
+func (m *mockChargingRepo) PreviousOdometer(_ context.Context, userID, carID uuid.UUID, before time.Time, excludeID uuid.UUID) (*int, error) {
+	var best *domain.ChargingSession
+	for _, s := range m.store {
+		s := s
+		if s.UserID != userID || s.CarID != carID || s.ID == excludeID {
+			continue
+		}
+		if s.OdometerKM == nil || !s.StartedAt.Before(before) {
+			continue
+		}
+		if best == nil || s.StartedAt.After(best.StartedAt) {
+			best = &s
+		}
+	}
+	if best == nil {
+		return nil, nil
+	}
+	return best.OdometerKM, nil
 }
 
 // ── mock SettingsRepository ───────────────────────────────────────────────────
@@ -243,25 +270,28 @@ func TestCharging_PerSessionEfficiency(t *testing.T) {
 	}
 }
 
-func TestCharging_EfficiencyNilWhenOdometerNotIncreasing(t *testing.T) {
+// BUG-4: the odometer is cumulative, so a session whose odometer is not strictly
+// greater than the previous session's (same car) is rejected.
+func TestCharging_OdometerMustIncrease(t *testing.T) {
 	owner := uuid.New()
 	svc, carID, _ := newChargingSvc(t, owner, repository.Rates{})
 	ctx := context.Background()
-	// Same odometer (km_driven = 0) → no efficiency.
 	if _, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now().Add(-time.Hour), OdometerKM: ptr(500)}); err != nil {
 		t.Fatalf("create s1: %v", err)
 	}
-	if _, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(500), KWhCharged: ptr(20.0)}); err != nil {
-		t.Fatalf("create s2: %v", err)
+	// Equal odometer → rejected.
+	_, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(500), KWhCharged: ptr(20.0)})
+	if !errors.Is(err, service.ErrOdometerNotIncreasing) {
+		t.Fatalf("equal odometer: want ErrOdometerNotIncreasing, got %v", err)
 	}
-	items, _, err := svc.List(ctx, owner, domain.ChargingFilter{}, 100, 0)
-	if err != nil {
-		t.Fatalf("List: %v", err)
+	// Lower odometer → rejected.
+	_, err = svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(400), KWhCharged: ptr(20.0)})
+	if !errors.Is(err, service.ErrOdometerNotIncreasing) {
+		t.Fatalf("lower odometer: want ErrOdometerNotIncreasing, got %v", err)
 	}
-	for i := range items {
-		if items[i].EfficiencyKWhPer100km != nil {
-			t.Errorf("zero distance → efficiency must be nil, got %v", *items[i].EfficiencyKWhPer100km)
-		}
+	// Strictly greater → accepted.
+	if _, err := svc.Create(ctx, owner, domain.ChargingInput{CarID: carID, StartedAt: time.Now(), OdometerKM: ptr(560), KWhCharged: ptr(20.0)}); err != nil {
+		t.Fatalf("increasing odometer should pass: %v", err)
 	}
 }
 

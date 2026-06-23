@@ -19,6 +19,11 @@ import (
 var (
 	ErrChargingNotFound = errors.New("charging session not found")
 	ErrInvalidCarRef    = errors.New("car_id does not reference one of your cars")
+	// ErrOdometerNotIncreasing is returned when a session's odometer is not greater
+	// than the previous session's for the same car. The odometer is cumulative
+	// (like the car's dashboard), so it must strictly increase (BUG-4). The message
+	// is user-facing (surfaced verbatim in the API error envelope).
+	ErrOdometerNotIncreasing = errors.New("کیلومترشمار باید از جلسه قبلی بیشتر باشد (کیلومترشمار تجمعی است)")
 )
 
 // HealthRecomputer is notified when a car's charging history changes so battery
@@ -68,6 +73,9 @@ func (s *ChargingService) Create(ctx context.Context, userID uuid.UUID, in domai
 
 	prepared, err := s.prepare(ctx, userID, in, rates)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOdometerMonotonic(ctx, userID, prepared, uuid.Nil); err != nil {
 		return nil, err
 	}
 	sess, err := s.sessions.Create(ctx, userID, prepared)
@@ -131,6 +139,9 @@ func (s *ChargingService) Update(ctx context.Context, userID, id uuid.UUID, in d
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkOdometerMonotonic(ctx, userID, prepared, id); err != nil {
+		return nil, err
+	}
 	sess, err := s.sessions.Update(ctx, userID, id, prepared)
 	if err != nil {
 		return nil, translateChargingErr(err)
@@ -168,6 +179,24 @@ func (s *ChargingService) prepare(ctx context.Context, userID uuid.UUID, in doma
 	}
 	in.Cost = resolveCost(in, rates)
 	return normalizeChargingInput(in), nil
+}
+
+// checkOdometerMonotonic enforces the cumulative-odometer invariant (BUG-4): a
+// session's odometer must be strictly greater than the nearest earlier session's
+// for the same car. No odometer on the new session, or no earlier reading, → pass.
+// excludeID skips the session being updated so it isn't compared against itself.
+func (s *ChargingService) checkOdometerMonotonic(ctx context.Context, userID uuid.UUID, in domain.ChargingInput, excludeID uuid.UUID) error {
+	if in.OdometerKM == nil {
+		return nil
+	}
+	prev, err := s.sessions.PreviousOdometer(ctx, userID, in.CarID, in.StartedAt, excludeID)
+	if err != nil {
+		return err
+	}
+	if prev != nil && *in.OdometerKM <= *prev {
+		return ErrOdometerNotIncreasing
+	}
+	return nil
 }
 
 // ensureCarOwned reuses CarRepository so a session can only reference one of the
