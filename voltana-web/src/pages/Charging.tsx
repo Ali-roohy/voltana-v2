@@ -86,7 +86,15 @@ const Charging = () => {
   const [selectedCarFilter, setSelectedCarFilter] = useState<string>("all");
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Sessions are expanded by default (BUG-2); we track the set the user has
+  // explicitly collapsed instead of a single expanded id. Empty set = all open.
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const toggleCollapse = (id: string) =>
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   // from > to is a user error: show a message and don't query the bad range.
   const invalidRange = !!fromDate && !!toDate && fromDate > toDate;
@@ -413,7 +421,7 @@ const Charging = () => {
         ) : (
           <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {displaySessions.map((session) => {
-              const isExpanded = expandedId === session.id;
+              const isExpanded = !collapsedIds.has(session.id);
               return (
               <Card key={session.id} className="overflow-hidden">
                 {/* Summary row — tap to expand */}
@@ -421,11 +429,11 @@ const Charging = () => {
                   role="button"
                   tabIndex={0}
                   aria-expanded={isExpanded}
-                  onClick={() => setExpandedId(isExpanded ? null : session.id)}
+                  onClick={() => toggleCollapse(session.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setExpandedId(isExpanded ? null : session.id);
+                      toggleCollapse(session.id);
                     }
                   }}
                   className="cursor-pointer"
@@ -579,7 +587,7 @@ const Charging = () => {
                           variant="ghost"
                           size="sm"
                           className="text-xs text-muted-foreground h-7 px-3"
-                          onClick={() => setExpandedId(null)}
+                          onClick={() => toggleCollapse(session.id)}
                         >
                           <X className="w-3 h-3 mr-1" />
                           بستن
@@ -675,6 +683,13 @@ const Charging = () => {
               )}
 
               <div className="space-y-2">
+                <Label htmlFor="odometer_km">{language === "fa" ? "کیلومتر شمار (اختیاری)" : "Odometer (km, optional)"}</Label>
+                <Input id="odometer_km" type="number" min="0" step="1" value={formData.odometer_km}
+                  onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
+                  placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="location">مکان (اختیاری)</Label>
                 <Input id="location" value={formData.location}
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="نام ایستگاه شارژ یا آدرس" />
@@ -691,13 +706,6 @@ const Charging = () => {
                   <Input id="end_soc" type="number" min="0" max="100" value={formData.end_soc}
                     onChange={(e) => setFormData({ ...formData, end_soc: e.target.value })} placeholder="80" />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="odometer_km">{language === "fa" ? "کیلومتر شمار (اختیاری)" : "Odometer (km, optional)"}</Label>
-                <Input id="odometer_km" type="number" min="0" step="1" value={formData.odometer_km}
-                  onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
-                  placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
               </div>
 
               <DialogFooter>
