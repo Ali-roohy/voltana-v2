@@ -284,12 +284,13 @@ func (s *AnalyticsService) compute(ctx context.Context, userID, carID uuid.UUID,
 	}
 
 	estimated := weightedCapSum / weightSum
-	if estimated > nominal { // clamp: measured capacity can't exceed nameplate (SOH ≤ 100%)
-		estimated = nominal
-	}
+	// SOH is NOT clamped to 100% (TASK-0042 BUG-5): a healthy/new battery whose
+	// measured usable energy exceeds the catalog nameplate — regen braking, downhill
+	// driving, no AC/heater — legitimately estimates above 100%. The UI surfaces a
+	// "healthier than expected" badge when SOH > 100.
 	soh := 100 * estimated / nominal
 	if soh < 0.01 { // floor: a pathologically tiny estimate must not round to 0.00 and
-		soh = 0.01 // trip the DB CHECK (soh_pct > 0) on Save. Keeps SOH ∈ (0,100].
+		soh = 0.01 // trip the DB CHECK (soh_pct > 0) on Save. Keeps SOH > 0.
 	}
 
 	snap := &domain.BatteryHealthSnapshot{

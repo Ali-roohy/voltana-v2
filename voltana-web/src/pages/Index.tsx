@@ -382,16 +382,30 @@ export default function Index() {
               {language === 'fa' ? 'سلامت باتری (SOH)' : 'Battery health (SOH)'}
             </div>
             {latestSoh ? (
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                  {formatNumber(latestSoh.soh_pct.toFixed(1))}%
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {language === 'fa'
-                    ? { low: 'اطمینان کم', medium: 'اطمینان متوسط', high: 'اطمینان بالا' }[latestSoh.confidence]
-                    : `${latestSoh.confidence} confidence`}
-                </span>
-              </div>
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl sm:text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                    {formatNumber(latestSoh.soh_pct.toFixed(1))}%
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {language === 'fa'
+                      ? { low: 'اطمینان کم', medium: 'اطمینان متوسط', high: 'اطمینان بالا' }[latestSoh.confidence]
+                      : `${latestSoh.confidence} confidence`}
+                  </span>
+                </div>
+                {latestSoh.soh_pct > 100 && (
+                  <div className="mt-2 space-y-1">
+                    <span className="inline-block rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium px-2 py-0.5">
+                      {language === 'fa' ? 'باتری سالم‌تر از حد انتظار' : 'Healthier than expected'}
+                    </span>
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      {language === 'fa'
+                        ? 'ترمز بازیابشی، سرازیری و خاموش بودن کولر/بخاری می‌تواند انرژی اندازه‌گیری‌شده را از ظرفیت اسمی بیشتر کند و SOH را به‌درستی بالای ۱۰۰٪ ببرد.'
+                        : 'Regenerative braking, downhill driving, and not using AC/heater can make measured energy exceed the nominal capacity, legitimately pushing SOH above 100%.'}
+                    </p>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-sm text-muted-foreground pt-1">
                 {language === 'fa' ? 'داده کافی نیست' : 'Not enough data yet'}

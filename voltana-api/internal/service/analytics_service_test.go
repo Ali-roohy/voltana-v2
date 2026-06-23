@@ -209,11 +209,13 @@ func TestAnalytics_SOHFromDeltaSOC(t *testing.T) {
 	}
 }
 
-func TestAnalytics_EfficiencyClampsSOHTo100(t *testing.T) {
+// BUG-5: SOH is no longer clamped to 100% — a battery measuring above nameplate
+// (regen/downhill/no-HVAC) legitimately estimates above 100%.
+func TestAnalytics_SOHAllowedAbove100(t *testing.T) {
 	owner := uuid.New()
 	svc, carID, chRepo, _ := newAnalyticsSvc(t, owner, ptr(60.0), ptr("LFP"))
 
-	// Δsoc=50, kwh=50 → raw cap = (50*0.88)/0.5 = 88 kWh > 60 nominal → clamp to 60, SOH=100.
+	// Δsoc=50, kwh=50 → raw cap = (50*0.88)/0.5 = 88 kWh > 60 nominal → SOH = 100*88/60 = 146.67.
 	for i := 0; i < 5; i++ {
 		seedSession(t, chRepo, owner, carID, 10, 60, 50)
 	}
@@ -221,11 +223,11 @@ func TestAnalytics_EfficiencyClampsSOHTo100(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetBattery: %v", err)
 	}
-	if res.Snapshot == nil || res.Snapshot.SOHPct != 100 {
-		t.Fatalf("soh = %v, want 100 (clamped)", res.Snapshot)
+	if res.Snapshot == nil || res.Snapshot.SOHPct != 146.67 {
+		t.Fatalf("soh = %v, want 146.67 (unclamped)", res.Snapshot)
 	}
-	if res.Snapshot.EstimatedCapacityKWh != 60 {
-		t.Errorf("estimated capacity = %v, want 60 (clamped to nominal)", res.Snapshot.EstimatedCapacityKWh)
+	if res.Snapshot.EstimatedCapacityKWh != 88 {
+		t.Errorf("estimated capacity = %v, want 88 (unclamped)", res.Snapshot.EstimatedCapacityKWh)
 	}
 }
 
