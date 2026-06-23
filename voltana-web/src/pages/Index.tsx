@@ -12,6 +12,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { Header } from "@/components/Header";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { formatNumber } from "@/lib/utils";
+import { formatMonth, formatDate } from "@/lib/dates";
 import { calcCost, ratesFromSettings, ratesForSession, formatCost } from "@/lib/cost";
 import { useChargingSessions } from "@/features/charging/hooks";
 import type { ChargingSession } from "@/features/charging/api";
@@ -57,7 +58,7 @@ export default function Index() {
   const { data: batteryHistory } = useBatteryHistory(batteryCarId);
 
   const sohTrend = (batteryHistory?.items ?? []).map((s) => ({
-    date: new Date(s.computed_at).toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US', { month: 'short', day: 'numeric' }),
+    date: formatDate(s.computed_at, language),
     soh: s.soh_pct,
   }));
   const latestSoh = battery && !isInsufficient(battery) ? battery : null;
@@ -74,10 +75,7 @@ export default function Index() {
       .filter((s) => s.efficiency_kwh_per_100km != null)
       .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
     return qualifying.map((s) => ({
-      date: new Date(s.started_at).toLocaleDateString(language === 'fa' ? 'fa-IR' : 'en-US', {
-        month: 'short',
-        day: 'numeric',
-      }),
+      date: formatDate(s.started_at, language),
       efficiency: s.efficiency_kwh_per_100km!,
       carName: carNameById.get(s.car_id) ?? '—',
     }));
@@ -135,7 +133,7 @@ export default function Index() {
 
     const socData = sorted
       .map((s) => ({
-        date: new Date(s.started_at).toLocaleDateString('fa-IR', { month: 'short', day: 'numeric' }),
+        date: formatDate(s.started_at, language),
         socChange: (s.end_soc ?? 0) - (s.start_soc ?? 0),
         energy: totalKwh(s),
       }))
@@ -150,7 +148,7 @@ export default function Index() {
       sessionCount,
       avgCost,
     };
-  }, [sessions, settings?.default_car_id, settings?.peak_rate, settings?.mid_rate, settings?.offpeak_rate]);
+  }, [sessions, settings?.default_car_id, settings?.peak_rate, settings?.mid_rate, settings?.offpeak_rate, language]);
 
   if (loading) {
     return (
@@ -265,10 +263,11 @@ export default function Index() {
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={stats.trend} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(m: string) => formatMonth(m, language)} />
                   <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', padding: '12px' }}
+                    labelFormatter={(m: string) => formatMonth(m, language)}
                     formatter={(value: number | string) => formatNumber(parseFloat(String(value)).toFixed(1))}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
@@ -305,10 +304,11 @@ export default function Index() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(m: string) => formatMonth(m, language)} />
                   <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => formatNumber(v)} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', padding: '12px' }}
+                    labelFormatter={(m: string) => formatMonth(m, language)}
                     formatter={(value: number | string) => formatCost(Number(value), currency)}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
