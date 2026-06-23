@@ -15,6 +15,10 @@ export interface ChargingSession {
   cost: number | null;
   notes: string | null;
   odometer_km: number | null;
+  // FEAT-3: optional charger power (kW). TASK-0042 migration: trip_distance_km is
+  // server-maintained (odometer delta), null when not derivable.
+  charge_power_kw: number | null;
+  trip_distance_km: number | null;
   // Rate snapshot (FEAT-6): the owner's rates when the session was created.
   // Cost math must use these — never the current settings. Null only on
   // legacy rows whose owner had no settings at backfill time.
@@ -44,6 +48,7 @@ export interface ChargingInput {
   end_soc?: number | null;
   cost?: number | null;
   odometer_km?: number | null;
+  charge_power_kw?: number | null;
 }
 
 interface ListResponse<T> {

@@ -64,7 +64,8 @@ const chargingCols = `id, user_id, car_id, started_at, ended_at, location,
 	kwh_charged::float8, energy_peak_kwh::float8, energy_mid_kwh::float8, energy_offpeak_kwh::float8,
 	start_soc, end_soc, cost::float8, notes, odometer_km,
 	rate_peak_at_time::float8, rate_mid_at_time::float8, rate_offpeak_at_time::float8,
-	created_at, updated_at`
+	created_at, updated_at,
+	charge_power_kw::float8, trip_distance_km::float8`
 
 func (r *pgxChargingRepository) AggregateByUser(ctx context.Context, userID uuid.UUID) (float64, float64, int, error) {
 	var totalKWh, totalCost float64
@@ -139,12 +140,14 @@ func (r *pgxChargingRepository) Create(ctx context.Context, userID uuid.UUID, in
 		`INSERT INTO charging_sessions
 			(user_id, car_id, started_at, ended_at, location, kwh_charged,
 			 energy_peak_kwh, energy_mid_kwh, energy_offpeak_kwh, start_soc, end_soc, cost, notes, odometer_km,
-			 rate_peak_at_time, rate_mid_at_time, rate_offpeak_at_time)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			 rate_peak_at_time, rate_mid_at_time, rate_offpeak_at_time,
+			 charge_power_kw, trip_distance_km)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		 RETURNING `+chargingCols,
 		userID, in.CarID, in.StartedAt, in.EndedAt, in.Location, in.KWhCharged,
 		in.EnergyPeakKWh, in.EnergyMidKWh, in.EnergyOffpeakKWh, in.StartSOC, in.EndSOC, in.Cost, in.Notes, in.OdometerKM,
 		in.RatePeakAtTime, in.RateMidAtTime, in.RateOffpeakAtTime,
+		in.ChargePowerKW, in.TripDistanceKM,
 	)
 	return scanChargingSession(row)
 }
@@ -181,6 +184,7 @@ func (r *pgxChargingRepository) ListByUser(ctx context.Context, userID uuid.UUID
 			&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM,
 			&s.RatePeakAtTime, &s.RateMidAtTime, &s.RateOffpeakAtTime,
 			&s.CreatedAt, &s.UpdatedAt,
+			&s.ChargePowerKW, &s.TripDistanceKM,
 			&s.PrevOdometerKM, &total); err != nil {
 			return nil, 0, err
 		}
@@ -204,11 +208,13 @@ func (r *pgxChargingRepository) Update(ctx context.Context, userID, id uuid.UUID
 		`UPDATE charging_sessions SET
 			car_id = $1, started_at = $2, ended_at = $3, location = $4, kwh_charged = $5,
 			energy_peak_kwh = $6, energy_mid_kwh = $7, energy_offpeak_kwh = $8,
-			start_soc = $9, end_soc = $10, cost = $11, notes = $12, odometer_km = $13
-		 WHERE id = $14 AND user_id = $15
+			start_soc = $9, end_soc = $10, cost = $11, notes = $12, odometer_km = $13,
+			charge_power_kw = $14, trip_distance_km = $15
+		 WHERE id = $16 AND user_id = $17
 		 RETURNING `+chargingCols,
 		in.CarID, in.StartedAt, in.EndedAt, in.Location, in.KWhCharged,
 		in.EnergyPeakKWh, in.EnergyMidKWh, in.EnergyOffpeakKWh, in.StartSOC, in.EndSOC, in.Cost, in.Notes, in.OdometerKM,
+		in.ChargePowerKW, in.TripDistanceKM,
 		id, userID,
 	)
 	return scanChargingSession(row)
@@ -240,7 +246,8 @@ func scanChargingSession(row pgx.Row) (*domain.ChargingSession, error) {
 		&s.KWhCharged, &s.EnergyPeakKWh, &s.EnergyMidKWh, &s.EnergyOffpeakKWh,
 		&s.StartSOC, &s.EndSOC, &s.Cost, &s.Notes, &s.OdometerKM,
 		&s.RatePeakAtTime, &s.RateMidAtTime, &s.RateOffpeakAtTime,
-		&s.CreatedAt, &s.UpdatedAt)
+		&s.CreatedAt, &s.UpdatedAt,
+		&s.ChargePowerKW, &s.TripDistanceKM)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound

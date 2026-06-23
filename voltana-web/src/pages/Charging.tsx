@@ -286,6 +286,7 @@ const Charging = () => {
       start_soc: session.start_soc,
       end_soc: session.end_soc,
       odometer_km: session.odometer_km,
+      charge_power_kw: session.charge_power_kw,
       cost: newCost,
     };
     try {

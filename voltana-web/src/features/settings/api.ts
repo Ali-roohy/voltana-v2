@@ -6,17 +6,22 @@ export interface Settings {
   mid_rate: number;
   offpeak_rate: number;
   currency: 'toman' | 'rial' | 'usd';
+  city: string | null;        // FEAT-2: home city (seasonal band)
+  regen_factor: number;       // FEAT-4: 0..1, default 0.10
   created_at: string;
   updated_at: string;
 }
 
-// PUT /v1/settings is a full replace — always send every field.
+// PUT /v1/settings is a full replace — always send every field. city/regen_factor
+// are optional here until the FEAT-2/4 UI populates them (omitted → null / 0.10).
 export interface SettingsUpdate {
   default_car_id: string | null;
   peak_rate: number;
   mid_rate: number;
   offpeak_rate: number;
   currency: 'toman' | 'rial' | 'usd';
+  city?: string | null;
+  regen_factor?: number;
 }
 
 export const getSettings = () => api.get<Settings>("/v1/settings");

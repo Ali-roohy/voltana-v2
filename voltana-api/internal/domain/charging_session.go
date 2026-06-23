@@ -25,6 +25,13 @@ type ChargingSession struct {
 	Cost             *float64   `json:"cost"`
 	Notes            *string    `json:"notes"`
 	OdometerKM       *int       `json:"odometer_km"`
+	// ChargePowerKW is the optional charger power (kW) the user entered (TASK-0042
+	// FEAT-3); backs duration prediction (FEAT-6) and per-location power memory.
+	ChargePowerKW *float64 `json:"charge_power_kw"`
+	// TripDistanceKM is the distance since the previous session for this car,
+	// derived from the cumulative odometer (TASK-0042). Server-maintained on write
+	// and backfilled by migration 000021; nil when it can't be derived.
+	TripDistanceKM *float64 `json:"trip_distance_km"`
 	// Rate snapshot (TASK-0037 FEAT-6): the owner's rates when the session was
 	// created. Frozen — updates never touch them; analytics/cost math must use
 	// these, not the user's current rates. Nil only on pre-migration legacy rows
@@ -62,6 +69,11 @@ type ChargingInput struct {
 	Cost             *float64
 	Notes            *string
 	OdometerKM       *int
+	ChargePowerKW    *float64 // FEAT-3: optional charger power (kW), client-supplied
+
+	// TripDistanceKM is set by the SERVICE on write (odometer delta), not bound from
+	// the client.
+	TripDistanceKM *float64
 
 	// Snapshot rates — set by the SERVICE at create time, never bound from the
 	// client and never changed on update.

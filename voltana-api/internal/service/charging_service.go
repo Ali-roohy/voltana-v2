@@ -75,7 +75,7 @@ func (s *ChargingService) Create(ctx context.Context, userID uuid.UUID, in domai
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkOdometerMonotonic(ctx, userID, prepared, uuid.Nil); err != nil {
+	if err := s.checkOdometerMonotonic(ctx, userID, &prepared, uuid.Nil); err != nil {
 		return nil, err
 	}
 	sess, err := s.sessions.Create(ctx, userID, prepared)
@@ -139,7 +139,7 @@ func (s *ChargingService) Update(ctx context.Context, userID, id uuid.UUID, in d
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkOdometerMonotonic(ctx, userID, prepared, id); err != nil {
+	if err := s.checkOdometerMonotonic(ctx, userID, &prepared, id); err != nil {
 		return nil, err
 	}
 	sess, err := s.sessions.Update(ctx, userID, id, prepared)
@@ -185,7 +185,10 @@ func (s *ChargingService) prepare(ctx context.Context, userID uuid.UUID, in doma
 // session's odometer must be strictly greater than the nearest earlier session's
 // for the same car. No odometer on the new session, or no earlier reading, → pass.
 // excludeID skips the session being updated so it isn't compared against itself.
-func (s *ChargingService) checkOdometerMonotonic(ctx context.Context, userID uuid.UUID, in domain.ChargingInput, excludeID uuid.UUID) error {
+// As a side effect it derives TripDistanceKM (= odometer − previous odometer) and
+// sets it on the input (TASK-0042 migration slice); left nil when not derivable.
+func (s *ChargingService) checkOdometerMonotonic(ctx context.Context, userID uuid.UUID, in *domain.ChargingInput, excludeID uuid.UUID) error {
+	in.TripDistanceKM = nil
 	if in.OdometerKM == nil {
 		return nil
 	}
@@ -193,8 +196,12 @@ func (s *ChargingService) checkOdometerMonotonic(ctx context.Context, userID uui
 	if err != nil {
 		return err
 	}
-	if prev != nil && *in.OdometerKM <= *prev {
-		return ErrOdometerNotIncreasing
+	if prev != nil {
+		if *in.OdometerKM <= *prev {
+			return ErrOdometerNotIncreasing
+		}
+		trip := float64(*in.OdometerKM - *prev)
+		in.TripDistanceKM = &trip
 	}
 	return nil
 }

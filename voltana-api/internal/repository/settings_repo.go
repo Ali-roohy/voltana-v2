@@ -40,7 +40,8 @@ func NewSettingsRepository(db *pgxpool.Pool) SettingsRepository {
 
 // DECIMAL rates are cast to float8 so they scan into float64.
 const settingsCols = `id, user_id, default_car_id,
-	peak_rate::float8, mid_rate::float8, offpeak_rate::float8, currency, created_at, updated_at`
+	peak_rate::float8, mid_rate::float8, offpeak_rate::float8, currency, created_at, updated_at,
+	city, regen_factor::float8`
 
 // GetRates returns the user's rates, or all-zero rates when no settings row
 // exists yet. (GetOrCreate is the write path; this read stays side-effect-free.)
@@ -84,15 +85,19 @@ func (r *pgxSettingsRepository) Update(ctx context.Context, userID uuid.UUID, in
 	if currency == "" {
 		currency = "toman"
 	}
+	regen := in.RegenFactor
+	if regen < 0 || regen > 1 {
+		regen = 0.10 // default/clamp (FEAT-4)
+	}
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO user_settings (user_id, default_car_id, peak_rate, mid_rate, offpeak_rate, currency)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO user_settings (user_id, default_car_id, peak_rate, mid_rate, offpeak_rate, currency, city, regen_factor)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 ON CONFLICT (user_id) DO UPDATE SET
 		   default_car_id = EXCLUDED.default_car_id, peak_rate = EXCLUDED.peak_rate,
 		   mid_rate = EXCLUDED.mid_rate, offpeak_rate = EXCLUDED.offpeak_rate,
-		   currency = EXCLUDED.currency
+		   currency = EXCLUDED.currency, city = EXCLUDED.city, regen_factor = EXCLUDED.regen_factor
 		 RETURNING `+settingsCols,
-		userID, uuidArg(in.DefaultCarID), in.PeakRate, in.MidRate, in.OffpeakRate, currency,
+		userID, uuidArg(in.DefaultCarID), in.PeakRate, in.MidRate, in.OffpeakRate, currency, in.City, regen,
 	)
 	return scanUserSettings(row)
 }
@@ -100,7 +105,7 @@ func (r *pgxSettingsRepository) Update(ctx context.Context, userID uuid.UUID, in
 func scanUserSettings(row pgx.Row) (*domain.UserSettings, error) {
 	s := &domain.UserSettings{}
 	var id, userID, defCar pgtype.UUID
-	err := row.Scan(&id, &userID, &defCar, &s.PeakRate, &s.MidRate, &s.OffpeakRate, &s.Currency, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&id, &userID, &defCar, &s.PeakRate, &s.MidRate, &s.OffpeakRate, &s.Currency, &s.CreatedAt, &s.UpdatedAt, &s.City, &s.RegenFactor)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound

@@ -25,10 +25,12 @@ func NewSettingsHandler(settings *service.SettingsService) *SettingsHandler {
 // to 0; omitted/null default_car_id clears it.
 type settingsRequest struct {
 	DefaultCarID *string `json:"default_car_id" binding:"omitempty,uuid"`
-	PeakRate     float64 `json:"peak_rate"      binding:"gte=0"`
-	MidRate      float64 `json:"mid_rate"       binding:"gte=0"`
-	OffpeakRate  float64 `json:"offpeak_rate"   binding:"gte=0"`
-	Currency     string  `json:"currency"       binding:"omitempty,oneof=toman rial usd"`
+	PeakRate     float64  `json:"peak_rate"      binding:"gte=0"`
+	MidRate      float64  `json:"mid_rate"       binding:"gte=0"`
+	OffpeakRate  float64  `json:"offpeak_rate"   binding:"gte=0"`
+	Currency     string   `json:"currency"       binding:"omitempty,oneof=toman rial usd"`
+	City         *string  `json:"city"           binding:"omitempty,max=120"`         // FEAT-2
+	RegenFactor  *float64 `json:"regen_factor"   binding:"omitempty,gte=0,lte=1"`     // FEAT-4
 }
 
 func (req settingsRequest) toInput() domain.SettingsInput {
@@ -37,6 +39,11 @@ func (req settingsRequest) toInput() domain.SettingsInput {
 		MidRate:     req.MidRate,
 		OffpeakRate: req.OffpeakRate,
 		Currency:    req.Currency,
+		City:        req.City,
+		RegenFactor: 0.10, // default when omitted (full-replace PUT)
+	}
+	if req.RegenFactor != nil {
+		in.RegenFactor = *req.RegenFactor
 	}
 	if req.DefaultCarID != nil {
 		id := uuid.MustParse(*req.DefaultCarID) // validated as a UUID by binding
