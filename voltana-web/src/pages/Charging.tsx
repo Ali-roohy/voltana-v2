@@ -53,6 +53,7 @@ interface FormData {
   energy_mid_kwh: string;
   energy_offpeak_kwh: string;
   location: string;
+  charge_power_kw: string;
   start_soc: string;
   end_soc: string;
   odometer_km: string;
@@ -66,6 +67,7 @@ const emptyForm = (carId = ""): FormData => ({
   energy_mid_kwh: "",
   energy_offpeak_kwh: "",
   location: "",
+  charge_power_kw: "",
   start_soc: "",
   end_soc: "",
   odometer_km: "",
@@ -121,6 +123,31 @@ const Charging = () => {
   const [errors, setErrors] = useState<{ car_id?: boolean; date?: boolean; energy?: boolean; duration?: boolean }>({});
 
   const carById = useMemo(() => new Map(cars.map((c) => [c.id, c] as const)), [cars]);
+
+  // FEAT-3 location memory: most-recent charge_power_kw seen at each location,
+  // derived from session history (the persisted source of truth — no extra store).
+  // Keyed by trimmed, case-insensitive location.
+  const powerByLocation = useMemo(() => {
+    const m = new Map<string, number>();
+    [...sessions]
+      .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+      .forEach((s) => {
+        const loc = s.location?.trim().toLowerCase();
+        if (loc && s.charge_power_kw != null) m.set(loc, s.charge_power_kw);
+      });
+    return m;
+  }, [sessions]);
+
+  // The single newest session (by time) — backs last-location / last-power prefill.
+  const lastSession = useMemo(
+    () => [...sessions].sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0],
+    [sessions],
+  );
+
+  const powerForLocation = (loc: string): string => {
+    const p = powerByLocation.get(loc.trim().toLowerCase());
+    return p != null ? String(p) : "";
+  };
 
   // The car a fresh form should pre-select: the user's default car if it still exists,
   // otherwise the first car in the list.
@@ -179,6 +206,7 @@ const Charging = () => {
       start_soc: num(formData.start_soc),
       end_soc: num(formData.end_soc),
       odometer_km: formData.odometer_km.trim() === "" ? null : parseInt(formData.odometer_km, 10),
+      charge_power_kw: num(formData.charge_power_kw),
       // cost omitted — the Go API computes it from the per-period energy × rates
     };
   };
@@ -223,10 +251,11 @@ const Charging = () => {
 
   // Open a fresh "add session" form, pre-selecting the default car (bug #1).
   const handleAddNew = () => {
-    const lastSession = sessions[0];
     const next = emptyForm(defaultCarId);
     next.location = lastSession?.location ?? "";
     next.start_soc = lastSession?.end_soc?.toString() ?? "";
+    // FEAT-3: pre-fill charge power remembered for the pre-filled location.
+    next.charge_power_kw = next.location ? powerForLocation(next.location) : "";
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -248,6 +277,7 @@ const Charging = () => {
       energy_mid_kwh: session.energy_mid_kwh?.toString() ?? "",
       energy_offpeak_kwh: session.energy_offpeak_kwh?.toString() ?? "",
       location: session.location ?? "",
+      charge_power_kw: session.charge_power_kw?.toString() ?? "",
       start_soc: session.start_soc?.toString() ?? "",
       end_soc: session.end_soc?.toString() ?? "",
       odometer_km: session.odometer_km?.toString() ?? "",
@@ -299,10 +329,10 @@ const Charging = () => {
   };
 
   const resetForm = () => {
-    const lastSession = sessions[0];
     const next = emptyForm(defaultCarId);
     next.location = lastSession?.location ?? "";
     next.start_soc = lastSession?.end_soc?.toString() ?? "";
+    next.charge_power_kw = next.location ? powerForLocation(next.location) : "";
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -690,10 +720,29 @@ const Charging = () => {
                   placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="location">مکان (اختیاری)</Label>
-                <Input id="location" value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="نام ایستگاه شارژ یا آدرس" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="location">مکان شارژ (اختیاری)</Label>
+                  <Input id="location" value={formData.location}
+                    onChange={(e) => {
+                      const location = e.target.value;
+                      // FEAT-3: when the location matches a known one, auto-fill its
+                      // remembered charge power (unless the user already typed one).
+                      const known = powerForLocation(location);
+                      setFormData((p) => ({
+                        ...p,
+                        location,
+                        charge_power_kw: p.charge_power_kw === "" && known !== "" ? known : p.charge_power_kw,
+                      }));
+                    }}
+                    placeholder="نام ایستگاه شارژ یا آدرس" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="charge_power_kw">{language === "fa" ? "توان شارژ (kW، اختیاری)" : "Charge power (kW, optional)"}</Label>
+                  <Input id="charge_power_kw" type="number" step="0.1" min="0" value={formData.charge_power_kw}
+                    onChange={(e) => setFormData({ ...formData, charge_power_kw: e.target.value })}
+                    placeholder={language === "fa" ? "مثلاً ۷ یا ۵۰" : "e.g. 7 or 50"} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
