@@ -43,7 +43,14 @@ import { Header } from "@/components/Header";
 import { useChargingSessions, useCreateSession, useUpdateSession, useDeleteSession } from "@/features/charging/hooks";
 import type { ChargingSession, ChargingInput, ChargingListFilter } from "@/features/charging/api";
 import { useCars } from "@/features/cars/hooks";
+import { useCatalog } from "@/features/catalog/hooks";
 import { useSettings } from "@/features/settings/hooks";
+import {
+  resolveUsableCapacity,
+  carAverageConsumption,
+  predictStartSoc,
+  predictEndSoc,
+} from "@/features/charging/consumption";
 
 interface FormData {
   car_id: string;
@@ -79,6 +86,7 @@ const Charging = () => {
   const navigate = useNavigate();
 
   const { data: cars = [] } = useCars();
+  const { data: catalog = [] } = useCatalog();
   const { data: settings } = useSettings();
   const createSession = useCreateSession();
   const updateSession = useUpdateSession();
@@ -148,6 +156,98 @@ const Charging = () => {
     const p = powerByLocation.get(loc.trim().toLowerCase());
     return p != null ? String(p) : "";
   };
+
+  // FEAT-1 smart SOC: catalog map (for usable capacity) + per-car previous session.
+  const catalogById = useMemo(() => new Map(catalog.map((c) => [c.id, c] as const)), [catalog]);
+  const prevSessionForCar = (carId: string): ChargingSession | undefined =>
+    [...sessions]
+      .filter((s) => s.car_id === carId)
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0];
+
+  // Tracks whether start/end SOC are still auto-predicted (safe to overwrite). Once
+  // the user edits a field it becomes manual and predictions stop touching it.
+  const [socAuto, setSocAuto] = useState({ start: true, end: true });
+
+  // Inputs for the SOC predictions, derived from the currently-selected car.
+  const predInputs = (carId: string) => {
+    const car = carById.get(carId);
+    return {
+      prev: prevSessionForCar(carId),
+      capacity: resolveUsableCapacity(car, catalogById),
+      avg: carAverageConsumption(carId, sessions),
+    };
+  };
+
+  const toInt = (v: string): number | null => (v.trim() === "" ? null : parseInt(v, 10));
+  const energyTotal = (fd: FormData): number | null => {
+    const t = (parseFloat(fd.energy_peak_kwh) || 0) + (parseFloat(fd.energy_mid_kwh) || 0) + (parseFloat(fd.energy_offpeak_kwh) || 0);
+    return t > 0 ? t : null;
+  };
+
+  // Live predictions for the current form (also drive the gentle "differs a lot" hint).
+  const predictedStart = useMemo(() => {
+    const { prev, capacity, avg } = predInputs(formData.car_id);
+    const odo = toInt(formData.odometer_km);
+    const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
+    return predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg }, capacity);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.car_id, formData.odometer_km, sessions, catalogById]);
+
+  const predictedEnd = useMemo(() => {
+    const { capacity } = predInputs(formData.car_id);
+    return predictEndSoc(toInt(formData.start_soc), energyTotal(formData), capacity);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.car_id, formData.start_soc, formData.energy_peak_kwh, formData.energy_mid_kwh, formData.energy_offpeak_kwh, sessions, catalogById]);
+
+  // FEAT-1 onChange handlers: recompute the auto fields, mark manual edits.
+  const onOdometerChange = (value: string) => {
+    setFormData((p) => {
+      const next = { ...p, odometer_km: value };
+      if (socAuto.start) {
+        const { prev, capacity, avg } = predInputs(next.car_id);
+        const odo = toInt(value);
+        const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
+        const ps = predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg }, capacity);
+        if (ps != null) next.start_soc = String(ps);
+      }
+      return next;
+    });
+  };
+  const onEnergyChange = (field: "energy_peak_kwh" | "energy_mid_kwh" | "energy_offpeak_kwh", value: string) => {
+    setFormData((p) => {
+      const next = { ...p, [field]: value };
+      if (socAuto.end) {
+        const { capacity } = predInputs(next.car_id);
+        const pe = predictEndSoc(toInt(next.start_soc), energyTotal(next), capacity);
+        if (pe != null) next.end_soc = String(pe);
+      }
+      return next;
+    });
+    setErrors((p) => ({ ...p, energy: false }));
+  };
+  const onStartSocChange = (value: string) => {
+    setSocAuto((s) => ({ ...s, start: false }));
+    setFormData((p) => {
+      const next = { ...p, start_soc: value };
+      if (socAuto.end) {
+        const { capacity } = predInputs(next.car_id);
+        const pe = predictEndSoc(toInt(value), energyTotal(next), capacity);
+        if (pe != null) next.end_soc = String(pe);
+      }
+      return next;
+    });
+  };
+  const onEndSocChange = (value: string) => {
+    setSocAuto((s) => ({ ...s, end: false }));
+    setFormData((p) => ({ ...p, end_soc: value }));
+  };
+
+  // Gentle hint when the user's value diverges a lot from the prediction (FEAT-1).
+  const SOC_HINT_MARGIN = 15;
+  const startHint = !socAuto.start && predictedStart != null && toInt(formData.start_soc) != null &&
+    Math.abs((toInt(formData.start_soc) as number) - predictedStart) > SOC_HINT_MARGIN ? predictedStart : null;
+  const endHint = !socAuto.end && predictedEnd != null && toInt(formData.end_soc) != null &&
+    Math.abs((toInt(formData.end_soc) as number) - predictedEnd) > SOC_HINT_MARGIN ? predictedEnd : null;
 
   // The car a fresh form should pre-select: the user's default car if it still exists,
   // otherwise the first car in the list.
@@ -256,6 +356,9 @@ const Charging = () => {
     next.start_soc = lastSession?.end_soc?.toString() ?? "";
     // FEAT-3: pre-fill charge power remembered for the pre-filled location.
     next.charge_power_kw = next.location ? powerForLocation(next.location) : "";
+    // start SOC starts auto-predicted (carries prev end SOC); end SOC auto until energy entered.
+    next.start_soc = lastSession?.end_soc != null ? String(lastSession.end_soc) : "";
+    setSocAuto({ start: true, end: true });
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -282,6 +385,8 @@ const Charging = () => {
       end_soc: session.end_soc?.toString() ?? "",
       odometer_km: session.odometer_km?.toString() ?? "",
     });
+    // Editing an existing session: its SOC values are user data — never auto-overwrite.
+    setSocAuto({ start: false, end: false });
     setIsDialogOpen(true);
   };
 
@@ -333,6 +438,8 @@ const Charging = () => {
     next.location = lastSession?.location ?? "";
     next.start_soc = lastSession?.end_soc?.toString() ?? "";
     next.charge_power_kw = next.location ? powerForLocation(next.location) : "";
+    next.start_soc = lastSession?.end_soc != null ? String(lastSession.end_soc) : "";
+    setSocAuto({ start: true, end: true });
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -693,21 +800,21 @@ const Charging = () => {
                 <Label htmlFor="energy_peak_kwh" className={cn(errors.energy && "text-destructive")}>انرژی اوج بار (kWh)</Label>
                 <Input id="energy_peak_kwh" type="number" step="0.01" min="0" value={formData.energy_peak_kwh}
                   className={cn(errors.energy && "border-destructive focus-visible:ring-destructive")}
-                  onChange={(e) => { setFormData({ ...formData, energy_peak_kwh: e.target.value }); setErrors((p) => ({ ...p, energy: false })); }} placeholder="0" />
+                  onChange={(e) => onEnergyChange("energy_peak_kwh", e.target.value)} placeholder="0" />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="energy_mid_kwh" className={cn(errors.energy && "text-destructive")}>انرژی میان باری (kWh)</Label>
                 <Input id="energy_mid_kwh" type="number" step="0.01" min="0" value={formData.energy_mid_kwh}
                   className={cn(errors.energy && "border-destructive focus-visible:ring-destructive")}
-                  onChange={(e) => { setFormData({ ...formData, energy_mid_kwh: e.target.value }); setErrors((p) => ({ ...p, energy: false })); }} placeholder="0" />
+                  onChange={(e) => onEnergyChange("energy_mid_kwh", e.target.value)} placeholder="0" />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="energy_offpeak_kwh" className={cn(errors.energy && "text-destructive")}>انرژی کم باری (kWh)</Label>
                 <Input id="energy_offpeak_kwh" type="number" step="0.01" min="0" value={formData.energy_offpeak_kwh}
                   className={cn(errors.energy && "border-destructive focus-visible:ring-destructive")}
-                  onChange={(e) => { setFormData({ ...formData, energy_offpeak_kwh: e.target.value }); setErrors((p) => ({ ...p, energy: false })); }} placeholder="0" />
+                  onChange={(e) => onEnergyChange("energy_offpeak_kwh", e.target.value)} placeholder="0" />
               </div>
               {errors.energy && (
                 <p className="text-sm text-destructive">حداقل مقدار انرژی شارژشده الزامی است</p>
@@ -716,7 +823,7 @@ const Charging = () => {
               <div className="space-y-2">
                 <Label htmlFor="odometer_km">{language === "fa" ? "کیلومتر شمار (اختیاری)" : "Odometer (km, optional)"}</Label>
                 <Input id="odometer_km" type="number" min="0" step="1" value={formData.odometer_km}
-                  onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
+                  onChange={(e) => onOdometerChange(e.target.value)}
                   placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
               </div>
 
@@ -749,12 +856,22 @@ const Charging = () => {
                 <div className="space-y-2">
                   <Label htmlFor="start_soc">SOC شروع (%)</Label>
                   <Input id="start_soc" type="number" min="0" max="100" value={formData.start_soc}
-                    onChange={(e) => setFormData({ ...formData, start_soc: e.target.value })} placeholder="30" />
+                    onChange={(e) => onStartSocChange(e.target.value)} placeholder="30" />
+                  {startHint != null && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {language === "fa" ? `پیش‌بینی: حدود ${startHint}%` : `Predicted: ~${startHint}%`}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="end_soc">SOC پایان (%)</Label>
                   <Input id="end_soc" type="number" min="0" max="100" value={formData.end_soc}
-                    onChange={(e) => setFormData({ ...formData, end_soc: e.target.value })} placeholder="80" />
+                    onChange={(e) => onEndSocChange(e.target.value)} placeholder="80" />
+                  {endHint != null && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {language === "fa" ? `پیش‌بینی: حدود ${endHint}%` : `Predicted: ~${endHint}%`}
+                    </p>
+                  )}
                 </div>
               </div>
 
