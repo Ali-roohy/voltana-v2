@@ -50,6 +50,7 @@ import {
   carAverageConsumption,
   predictStartSoc,
   predictEndSoc,
+  applyRegen,
 } from "@/features/charging/consumption";
 
 interface FormData {
@@ -164,6 +165,19 @@ const Charging = () => {
       .filter((s) => s.car_id === carId)
       .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0];
 
+  // FEAT-4 elevation heuristic: the immediately-earlier session for the same car.
+  const chronoPrev = (session: ChargingSession): ChargingSession | undefined =>
+    [...sessions]
+      .filter((s) => s.car_id === session.car_id && new Date(s.started_at).getTime() < new Date(session.started_at).getTime())
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0];
+  // True when the previous session was at a different location (possible elevation change).
+  const elevationMayDiffer = (session: ChargingSession): boolean => {
+    const prev = chronoPrev(session);
+    const a = session.location?.trim().toLowerCase();
+    const b = prev?.location?.trim().toLowerCase();
+    return !!a && !!b && a !== b;
+  };
+
   // Tracks whether start/end SOC are still auto-predicted (safe to overwrite). Once
   // the user edits a field it becomes manual and predictions stop touching it.
   const [socAuto, setSocAuto] = useState({ start: true, end: true });
@@ -180,6 +194,7 @@ const Charging = () => {
   };
 
   // Inputs for the SOC predictions, derived from the currently-selected car.
+  const regenFactor = settings?.regen_factor ?? 0;
   const predInputs = (carId: string) => {
     const car = carById.get(carId);
     return {
@@ -200,7 +215,7 @@ const Charging = () => {
     const { prev, capacity, avg } = predInputs(formData.car_id);
     const odo = toInt(formData.odometer_km);
     const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
-    return predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg }, capacity);
+    return predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor }, capacity);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.car_id, formData.odometer_km, sessions, catalogById]);
 
@@ -218,7 +233,7 @@ const Charging = () => {
         const { prev, capacity, avg } = predInputs(next.car_id);
         const odo = toInt(value);
         const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
-        const ps = predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg }, capacity);
+        const ps = predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor }, capacity);
         if (ps != null) next.start_soc = String(ps);
       }
       return next;
@@ -730,6 +745,31 @@ const Charging = () => {
 
                       {session.location && (
                         <div className="text-sm text-muted-foreground">📍 {session.location}</div>
+                      )}
+
+                      {/* FEAT-4: raw vs regen-adjusted consumption */}
+                      {session.efficiency_kwh_per_100km != null && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">{language === "fa" ? "مصرف" : "Consumption"}: </span>
+                          {language === "fa" ? "خام " : "raw "}{session.efficiency_kwh_per_100km.toFixed(1)}
+                          {regenFactor > 0 && (
+                            <>
+                              {" · "}
+                              {language === "fa" ? "با بازیابی " : "adjusted "}
+                              {applyRegen(session.efficiency_kwh_per_100km, regenFactor).toFixed(1)}
+                            </>
+                          )}
+                          {" kWh/100km"}
+                        </div>
+                      )}
+
+                      {/* FEAT-4: soft elevation note when the previous session was elsewhere */}
+                      {elevationMayDiffer(session) && (
+                        <div className="text-xs text-muted-foreground">
+                          {language === "fa"
+                            ? "ممکن است اختلاف ارتفاع بر مصرف اثر گذاشته باشد"
+                            : "Elevation difference may have affected consumption"}
+                        </div>
                       )}
 
                       {session.notes && (

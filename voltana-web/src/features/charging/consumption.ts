@@ -27,11 +27,23 @@ export interface ConsumptionContext {
 }
 
 /**
- * The single consumption estimate (kWh/100km). Currently just the car average.
- * FEAT-2/FEAT-4 will layer `month` and `regenFactor` onto this without a rewrite.
+ * The single consumption estimate (kWh/100km). Layers are applied to the car's
+ * average in one place:
+ *   - FEAT-4: regenerative braking lowers effective consumption × (1 − regenFactor).
+ *   - FEAT-2 (pending): seasonal multiplier on ctx.month plugs in HERE.
  */
 export function estimateConsumption(ctx: ConsumptionContext): number {
-  return ctx.carAvgKwhPer100km;
+  const seasonMultiplier = 1; // FEAT-2 will replace with monthMultiplier(ctx.month)
+  return ctx.carAvgKwhPer100km * seasonMultiplier * (1 - clamp01(ctx.regenFactor ?? 0));
+}
+
+/** raw kWh/100km adjusted for regen — used for the raw-vs-adjusted session detail (FEAT-4). */
+export function applyRegen(rawKwhPer100km: number, regenFactor: number | undefined): number {
+  return rawKwhPer100km * (1 - clamp01(regenFactor ?? 0));
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
 }
 
 /** Resolve a car's usable battery capacity (kWh): override → catalog → null. */

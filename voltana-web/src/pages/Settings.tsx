@@ -34,6 +34,7 @@ export default function Settings() {
   const [ratePeak, setRatePeak] = useState<string>('2000');
   const [rateMid, setRateMid] = useState<string>('1000');
   const [rateOffpeak, setRateOffpeak] = useState<string>('500');
+  const [regenPct, setRegenPct] = useState<string>('10'); // FEAT-4: regen factor as a percentage
   const currency = 'toman' as const;
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function Settings() {
       setRatePeak(settings.peak_rate?.toString() || '2000');
       setRateMid(settings.mid_rate?.toString() || '1000');
       setRateOffpeak(settings.offpeak_rate?.toString() || '500');
+      setRegenPct(settings.regen_factor != null ? String(Math.round(settings.regen_factor * 100)) : '10');
     }
   }, [settings]);
 
@@ -66,6 +68,9 @@ export default function Settings() {
         mid_rate: parseFloat(rateMid) || 1000,
         offpeak_rate: parseFloat(rateOffpeak) || 500,
         currency,
+        // Preserve city (FEAT-2, not yet edited here) and persist regen factor (FEAT-4).
+        city: settings?.city ?? null,
+        regen_factor: Math.min(1, Math.max(0, (parseFloat(regenPct) || 0) / 100)),
       },
       {
         onSuccess: () => toast.success(isRTL ? 'تنظیمات با موفقیت ذخیره شد' : 'Settings saved successfully'),
@@ -83,6 +88,10 @@ export default function Settings() {
     peakRate: isRTL ? 'نرخ اوج بار (تومان/kWh)' : 'Peak Rate (Toman/kWh)',
     midRate: isRTL ? 'نرخ میان‌باری (تومان/kWh)' : 'Mid Rate (Toman/kWh)',
     offpeakRate: isRTL ? 'نرخ کم‌باری (تومان/kWh)' : 'Off-Peak Rate (Toman/kWh)',
+    regenFactor: isRTL ? 'ضریب بازیابی انرژی (٪)' : 'Regen factor (%)',
+    regenDesc: isRTL
+      ? 'سهم بازیابی انرژی ترمز که مصرف مؤثر را کاهش می‌دهد (پیش‌فرض ۱۰٪).'
+      : 'Share of regenerative braking that lowers effective consumption (default 10%).',
     language: isRTL ? 'زبان' : 'Language',
     languageDesc: isRTL ? 'زبان نمایش برنامه را انتخاب کنید' : 'Select application display language',
     save: isRTL ? 'ذخیره تغییرات' : 'Save Changes',
@@ -197,6 +206,21 @@ export default function Settings() {
                   placeholder="1500"
                   dir={isRTL ? 'rtl' : 'ltr'}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="regenPct">{texts.regenFactor}</Label>
+                <Input
+                  id="regenPct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={regenPct}
+                  onChange={(e) => setRegenPct(e.target.value)}
+                  placeholder="10"
+                  dir={isRTL ? 'rtl' : 'ltr'}
+                />
+                <p className="text-xs text-muted-foreground">{texts.regenDesc}</p>
               </div>
 
               <Button
