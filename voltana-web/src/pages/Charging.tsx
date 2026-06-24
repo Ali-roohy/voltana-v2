@@ -55,6 +55,7 @@ import {
   applyRegen,
 } from "@/features/charging/consumption";
 import { computeEntryFlags, hasBlockingError, severityStyle, type EntryFlag } from "@/features/charging/warnings";
+import { jalaliMonthOf } from "@/features/analytics/season";
 
 interface FormData {
   car_id: string;
@@ -218,7 +219,7 @@ const Charging = () => {
     const { prev, capacity, avg } = predInputs(formData.car_id);
     const odo = toInt(formData.odometer_km);
     const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
-    return predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor }, capacity);
+    return predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor, month: jalaliMonthOf(formData.date) }, capacity);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.car_id, formData.odometer_km, sessions, catalogById]);
 
@@ -236,7 +237,7 @@ const Charging = () => {
         const { prev, capacity, avg } = predInputs(next.car_id);
         const odo = toInt(value);
         const tripKm = odo != null && prev?.odometer_km != null ? odo - prev.odometer_km : null;
-        const ps = predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor }, capacity);
+        const ps = predictStartSoc(prev?.end_soc, tripKm, { carAvgKwhPer100km: avg, regenFactor, month: jalaliMonthOf(next.date) }, capacity);
         if (ps != null) next.start_soc = String(ps);
       }
       return next;

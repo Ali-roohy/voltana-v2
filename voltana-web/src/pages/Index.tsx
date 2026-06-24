@@ -8,11 +8,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useMe } from "@/features/auth/hooks";
 import { Zap, Car, Bolt, Map as MapIcon, BatteryCharging } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Header } from "@/components/Header";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
 import { formatNumber } from "@/lib/utils";
 import { formatMonth, formatDate } from "@/lib/dates";
+import { monthMultiplier, jalaliMonthOf, seasonOf, SEASON_BAND_TOLERANCE } from "@/features/analytics/season";
 import { calcCost, ratesFromSettings, ratesForSession, formatCost } from "@/lib/cost";
 import { useChargingSessions } from "@/features/charging/hooks";
 import type { ChargingSession } from "@/features/charging/api";
@@ -25,6 +26,22 @@ import type { EfficiencyPoint } from "@/components/EfficiencyChart";
 
 const totalKwh = (s: ChargingSession) =>
   s.kwh_charged ?? (s.energy_peak_kwh ?? 0) + (s.energy_mid_kwh ?? 0) + (s.energy_offpeak_kwh ?? 0);
+
+// FEAT-2: monthly-energy tooltip showing actual vs the seasonal expected band.
+function SeasonTooltip({ active, payload, language }: { active?: boolean; payload?: Array<{ payload: { month: string; energy: number; expectedBand: [number, number]; jmonth: number } }>; language: string }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const season = seasonOf(d.jmonth);
+  const seasonText = language === 'fa' ? { warm: 'گرم', cold: 'سرد', mild: 'معتدل' }[season] : season;
+  return (
+    <div className="bg-card border border-border rounded-md px-3 py-2 text-xs shadow-md" dir={language === 'fa' ? 'rtl' : 'ltr'}>
+      <div className="font-medium mb-1">{formatMonth(d.month, language)}</div>
+      <div className="text-primary">{language === 'fa' ? 'مصرف واقعی' : 'Actual'}: {formatNumber(d.energy.toFixed(1))} kWh</div>
+      <div className="text-muted-foreground">{language === 'fa' ? 'محدوده مورد انتظار' : 'Expected'}: {formatNumber(d.expectedBand[0].toFixed(1))}–{formatNumber(d.expectedBand[1].toFixed(1))}</div>
+      <div className="text-muted-foreground">{language === 'fa' ? 'فصل' : 'Season'}: {seasonText}</div>
+    </div>
+  );
+}
 
 export default function Index() {
   const { t } = useTranslation();
@@ -127,6 +144,23 @@ export default function Index() {
       .map(([month, v]) => ({ month, energy: Number(v.energy.toFixed(2)), cost: Math.round(v.cost) }))
       .sort((a, b) => a.month.localeCompare(b.month));
 
+    // FEAT-2 seasonal expected-consumption band: baseline = mean monthly energy,
+    // scaled per month by the Jalali-season multiplier; band = ±tolerance around it.
+    const baselineEnergy = trend.length ? trend.reduce((s, t) => s + t.energy, 0) / trend.length : 0;
+    const trendBanded = trend.map((t) => {
+      const jmonth = jalaliMonthOf(t.month);
+      const expected = baselineEnergy * monthMultiplier(jmonth);
+      return {
+        ...t,
+        jmonth,
+        expected: Number(expected.toFixed(1)),
+        expectedBand: [
+          Number((expected * (1 - SEASON_BAND_TOLERANCE)).toFixed(1)),
+          Number((expected * (1 + SEASON_BAND_TOLERANCE)).toFixed(1)),
+        ] as [number, number],
+      };
+    });
+
     // Headline figures (scoped to the same sessions as totalCost).
     const sessionCount = sorted.length;
     const avgCost = sessionCount > 0 ? totalCost / sessionCount : null;
@@ -142,7 +176,7 @@ export default function Index() {
     return {
       totalEnergy: totalEnergy.toFixed(1),
       totalCost: totalCost.toFixed(0),
-      trend,
+      trend: trendBanded,
       socData,
       touMonth,
       sessionCount,
@@ -261,16 +295,24 @@ export default function Index() {
             </CardHeader>
             <CardContent className="pt-4 sm:pt-6 p-3 sm:p-6">
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={stats.trend} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <ComposedChart data={stats.trend} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(m: string) => formatMonth(m, language)} />
                   <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', padding: '12px' }}
-                    labelFormatter={(m: string) => formatMonth(m, language)}
-                    formatter={(value: number | string) => formatNumber(parseFloat(String(value)).toFixed(1))}
-                  />
+                  <Tooltip content={<SeasonTooltip language={language} />} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
+                  {/* FEAT-2: seasonal expected band, drawn behind the actual line */}
+                  <Area
+                    type="monotone"
+                    dataKey="expectedBand"
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.1}
+                    stroke="none"
+                    legendType="rect"
+                    activeDot={false}
+                    name={language === 'fa' ? 'محدوده مورد انتظار (فصل گرم/سرد)' : 'Expected range (warm/cold season)'}
+                    animationDuration={800}
+                  />
                   <Line
                     type="monotone"
                     dataKey="energy"
@@ -281,8 +323,13 @@ export default function Index() {
                     name={language === 'fa' ? 'انرژی (kWh)' : 'Energy (kWh)'}
                     animationDuration={1000}
                   />
-                </LineChart>
+                </ComposedChart>
               </ResponsiveContainer>
+              <p className="text-[11px] text-muted-foreground mt-2 text-center">
+                {language === 'fa'
+                  ? 'مصرف بالاتر در تابستان (کولر) و زمستان (بخاری) طبیعی است'
+                  : 'Higher consumption in summer (AC) and winter (heater) is normal'}
+              </p>
             </CardContent>
           </Card>
 

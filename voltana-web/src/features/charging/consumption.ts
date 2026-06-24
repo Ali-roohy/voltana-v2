@@ -10,6 +10,7 @@
 import type { ChargingSession } from "./api";
 import type { Car } from "@/features/cars/api";
 import type { CatalogCar } from "@/features/catalog/api";
+import { monthMultiplier } from "@/features/analytics/season";
 
 // Fallback when a car has no efficiency history yet (a reasonable mixed-driving EV
 // average, within the BUG-4 sanity band).
@@ -33,7 +34,7 @@ export interface ConsumptionContext {
  *   - FEAT-2 (pending): seasonal multiplier on ctx.month plugs in HERE.
  */
 export function estimateConsumption(ctx: ConsumptionContext): number {
-  const seasonMultiplier = 1; // FEAT-2 will replace with monthMultiplier(ctx.month)
+  const seasonMultiplier = monthMultiplier(ctx.month); // FEAT-2 (Jalali month)
   return ctx.carAvgKwhPer100km * seasonMultiplier * (1 - clamp01(ctx.regenFactor ?? 0));
 }
 

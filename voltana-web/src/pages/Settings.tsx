@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, Zap, Palette, Download } from "lucide-react";
@@ -23,6 +24,12 @@ import { FONTS } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+// FEAT-2: major Iranian cities (stored only; reserved for future regional tuning).
+const IRAN_CITIES = [
+  'تهران', 'مشهد', 'اصفهان', 'شیراز', 'تبریز', 'کرج', 'اهواز', 'قم',
+  'کرمانشاه', 'ارومیه', 'رشت', 'زاهدان', 'همدان', 'یزد', 'اردبیل', 'بندرعباس',
+] as const;
+
 export default function Settings() {
   const { language } = useLanguage();
   const { user, loading: authLoading, signOut } = useAuth();
@@ -35,6 +42,7 @@ export default function Settings() {
   const [rateMid, setRateMid] = useState<string>('1000');
   const [rateOffpeak, setRateOffpeak] = useState<string>('500');
   const [regenPct, setRegenPct] = useState<string>('10'); // FEAT-4: regen factor as a percentage
+  const [city, setCity] = useState<string>(''); // FEAT-2: home city (stored only for now)
   const currency = 'toman' as const;
 
   useEffect(() => {
@@ -54,6 +62,7 @@ export default function Settings() {
       setRateMid(settings.mid_rate?.toString() || '1000');
       setRateOffpeak(settings.offpeak_rate?.toString() || '500');
       setRegenPct(settings.regen_factor != null ? String(Math.round(settings.regen_factor * 100)) : '10');
+      setCity(settings.city ?? '');
     }
   }, [settings]);
 
@@ -68,8 +77,8 @@ export default function Settings() {
         mid_rate: parseFloat(rateMid) || 1000,
         offpeak_rate: parseFloat(rateOffpeak) || 500,
         currency,
-        // Preserve city (FEAT-2, not yet edited here) and persist regen factor (FEAT-4).
-        city: settings?.city ?? null,
+        // FEAT-2 city (stored only) + FEAT-4 regen factor.
+        city: city.trim() || null,
         regen_factor: Math.min(1, Math.max(0, (parseFloat(regenPct) || 0) / 100)),
       },
       {
@@ -88,6 +97,8 @@ export default function Settings() {
     peakRate: isRTL ? 'نرخ اوج بار (تومان/kWh)' : 'Peak Rate (Toman/kWh)',
     midRate: isRTL ? 'نرخ میان‌باری (تومان/kWh)' : 'Mid Rate (Toman/kWh)',
     offpeakRate: isRTL ? 'نرخ کم‌باری (تومان/kWh)' : 'Off-Peak Rate (Toman/kWh)',
+    city: isRTL ? 'شهر' : 'City',
+    cityPlaceholder: isRTL ? 'انتخاب شهر' : 'Select city',
     regenFactor: isRTL ? 'ضریب بازیابی انرژی (٪)' : 'Regen factor (%)',
     regenDesc: isRTL
       ? 'سهم بازیابی انرژی ترمز که مصرف مؤثر را کاهش می‌دهد (پیش‌فرض ۱۰٪).'
@@ -206,6 +217,20 @@ export default function Settings() {
                   placeholder="1500"
                   dir={isRTL ? 'rtl' : 'ltr'}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="city">{texts.city}</Label>
+                <Select value={city || undefined} onValueChange={setCity}>
+                  <SelectTrigger id="city">
+                    <SelectValue placeholder={texts.cityPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {IRAN_CITIES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
