@@ -1391,20 +1391,20 @@ Output handoff to developer for any doc file changes.`,
 };
 
 const ACTIVITY = [
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>dda8e15</strong> — fix: TASK-0042 BUG-5 — unclamp SOH, allow &gt;100% for healthy batteries', time: '12 seconds ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>1880c6b</strong> — fix: TASK-0042 BUG-4 — enforce cumulative odometer + sanity-guard efficiency', time: '8 minutes ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>db4de7d</strong> — fix: TASK-0042 BUG-2+BUG-3 — sessions expanded by default; odometer after off-peak', time: '23 minutes ago' },
-  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>8d6deb9</strong> — fix: TASK-0042 BUG-1 — Jalali calendar on chart axes (centralized lib/dates.ts)', time: '31 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>441905a</strong> — feat: TASK-0042 FEAT-4 — regen factor + elevation note in consumption', time: '26 seconds ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>89898dd</strong> — feat: TASK-0042 FEAT-6 — optional + predicted charge duration', time: '5 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>40f3d6c</strong> — feat: TASK-0042 FEAT-1 — smart SOC prediction via estimateConsumption(context)', time: '10 minutes ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>adc83e7</strong> — feat: TASK-0042 FEAT-5 (backend) — suspicious-data warnings on session list', time: '8 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>946ce5c</strong> — feat: TASK-0042 FEAT-3 — charge power field + per-location power memory', time: '8 hours ago' },
+  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>c0a16b1</strong> — feat: TASK-0042 migration 000021 — smart-session fields + plumbing', time: '8 hours ago' },
+  { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>2c33758</strong> — chore: TASK-0042 dashboard sync', time: '8 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>dda8e15</strong> — fix: TASK-0042 BUG-5 — unclamp SOH, allow &gt;100% for healthy batteries', time: '8 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>1880c6b</strong> — fix: TASK-0042 BUG-4 — enforce cumulative odometer + sanity-guard efficiency', time: '8 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>db4de7d</strong> — fix: TASK-0042 BUG-2+BUG-3 — sessions expanded by default; odometer after off-peak', time: '8 hours ago' },
+  { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>8d6deb9</strong> — fix: TASK-0042 BUG-1 — Jalali calendar on chart axes (centralized lib/dates.ts)', time: '8 hours ago' },
   { icon: '🐛', color: 'rgba(245,158,11,0.2)', text: '<strong>d2ded75</strong> — fix: make awscli install non-fatal in bootstrap-vps-prod.sh', time: '6 days ago' },
   { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>8756688</strong> — docs: record DuckDNS domain + VPS IP + email/OTP note in context.md', time: '6 days ago' },
   { icon: '🔧', color: 'rgba(100,116,139,0.2)', text: '<strong>3ce9e1c</strong> — chore: switch production domain to voltanaev.duckdns.org', time: '6 days ago' },
-  { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>660bc54</strong> — docs: clarify admin promotion is optional (first user is auto-admin)', time: '10 days ago' },
-  { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>714ad63</strong> — docs: replace DEPLOY.md with dev-setup + redirect page', time: '10 days ago' },
-  { icon: '📖', color: 'rgba(99,102,241,0.2)', text: '<strong>d9a2916</strong> — docs: fix DEPLOY_PRODUCTION runbook — VAPID/certbot/.env/Poste ordering', time: '10 days ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>d8de20f</strong> — feat: TASK-0041 — Part A: cmd/genvapid VAPID keygen tool + docs', time: '10 days ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>383f1d2</strong> — feat: TASK-0040 — Production Deployment: voltanaev.ir + Poste.io mail server', time: '11 days ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>5d06bf7</strong> — feat: TASK-0039 — push notifications: migration, frontend, spec, compose env (completes 56bbeaa)', time: '11 days ago' },
-  { icon: '✅', color: 'rgba(16,185,129,0.2)', text: '<strong>56bbeaa</strong> — feat: TASK-0039 — Web Push Notifications (battery SOH alerts + admin test)', time: '11 days ago' },
 ];
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
