@@ -167,6 +167,17 @@ const Charging = () => {
   // Tracks whether start/end SOC are still auto-predicted (safe to overwrite). Once
   // the user edits a field it becomes manual and predictions stop touching it.
   const [socAuto, setSocAuto] = useState({ start: true, end: true });
+  // FEAT-6: duration is optional + auto-predicted until the user edits it.
+  const [durationAuto, setDurationAuto] = useState(true);
+
+  // FEAT-6 duration prediction: energy / power × 60 (minutes). Power = the entered
+  // charge power, else the power remembered for the location (FEAT-3 memory).
+  const predictDurationMin = (fd: FormData): string => {
+    const energy = energyTotal(fd);
+    const power = parseFloat(fd.charge_power_kw) || (fd.location ? parseFloat(powerForLocation(fd.location)) : NaN);
+    if (!energy || !Number.isFinite(power) || power <= 0) return "";
+    return String(Math.round((energy / power) * 60));
+  };
 
   // Inputs for the SOC predictions, derived from the currently-selected car.
   const predInputs = (carId: string) => {
@@ -221,9 +232,21 @@ const Charging = () => {
         const pe = predictEndSoc(toInt(next.start_soc), energyTotal(next), capacity);
         if (pe != null) next.end_soc = String(pe);
       }
+      if (durationAuto) next.duration_minutes = predictDurationMin(next) || next.duration_minutes;
       return next;
     });
     setErrors((p) => ({ ...p, energy: false }));
+  };
+  const onChargePowerChange = (value: string) => {
+    setFormData((p) => {
+      const next = { ...p, charge_power_kw: value };
+      if (durationAuto) next.duration_minutes = predictDurationMin(next) || next.duration_minutes;
+      return next;
+    });
+  };
+  const onDurationChange = (value: string) => {
+    setDurationAuto(false);
+    setFormData((p) => ({ ...p, duration_minutes: value }));
   };
   const onStartSocChange = (value: string) => {
     setSocAuto((s) => ({ ...s, start: false }));
@@ -318,15 +341,15 @@ const Charging = () => {
     const peak = parseFloat(formData.energy_peak_kwh) || 0;
     const mid = parseFloat(formData.energy_mid_kwh) || 0;
     const offpeak = parseFloat(formData.energy_offpeak_kwh) || 0;
-    const duration = parseInt(formData.duration_minutes) || 0;
+    // FEAT-6: duration is now optional — only car, date, and total energy are required.
     const next = {
       car_id: !formData.car_id,
       date: !formData.date,
       energy: peak + mid + offpeak <= 0,
-      duration: duration <= 0,
+      duration: false,
     };
     setErrors(next);
-    return !next.car_id && !next.date && !next.energy && !next.duration;
+    return !next.car_id && !next.date && !next.energy;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -359,6 +382,7 @@ const Charging = () => {
     // start SOC starts auto-predicted (carries prev end SOC); end SOC auto until energy entered.
     next.start_soc = lastSession?.end_soc != null ? String(lastSession.end_soc) : "";
     setSocAuto({ start: true, end: true });
+    setDurationAuto(true);
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -385,8 +409,9 @@ const Charging = () => {
       end_soc: session.end_soc?.toString() ?? "",
       odometer_km: session.odometer_km?.toString() ?? "",
     });
-    // Editing an existing session: its SOC values are user data — never auto-overwrite.
+    // Editing an existing session: its SOC + duration are user data — never auto-overwrite.
     setSocAuto({ start: false, end: false });
+    setDurationAuto(false);
     setIsDialogOpen(true);
   };
 
@@ -440,6 +465,7 @@ const Charging = () => {
     next.charge_power_kw = next.location ? powerForLocation(next.location) : "";
     next.start_soc = lastSession?.end_soc != null ? String(lastSession.end_soc) : "";
     setSocAuto({ start: true, end: true });
+    setDurationAuto(true);
     setFormData(next);
     setEditingSession(null);
     setErrors({});
@@ -785,18 +811,6 @@ const Charging = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="duration_minutes" className={cn(errors.duration && "text-destructive")}>مدت زمان (دقیقه)</Label>
-                <Input
-                  id="duration_minutes"
-                  type="number"
-                  min="1"
-                  value={formData.duration_minutes}
-                  className={cn(errors.duration && "border-destructive focus-visible:ring-destructive")}
-                  onChange={(e) => { setFormData({ ...formData, duration_minutes: e.target.value }); setErrors((p) => ({ ...p, duration: false })); }}
-                />
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="energy_peak_kwh" className={cn(errors.energy && "text-destructive")}>انرژی اوج بار (kWh)</Label>
                 <Input id="energy_peak_kwh" type="number" step="0.01" min="0" value={formData.energy_peak_kwh}
                   className={cn(errors.energy && "border-destructive focus-visible:ring-destructive")}
@@ -836,11 +850,15 @@ const Charging = () => {
                       // FEAT-3: when the location matches a known one, auto-fill its
                       // remembered charge power (unless the user already typed one).
                       const known = powerForLocation(location);
-                      setFormData((p) => ({
-                        ...p,
-                        location,
-                        charge_power_kw: p.charge_power_kw === "" && known !== "" ? known : p.charge_power_kw,
-                      }));
+                      setFormData((p) => {
+                        const next = {
+                          ...p,
+                          location,
+                          charge_power_kw: p.charge_power_kw === "" && known !== "" ? known : p.charge_power_kw,
+                        };
+                        if (durationAuto) next.duration_minutes = predictDurationMin(next) || next.duration_minutes;
+                        return next;
+                      });
                     }}
                     placeholder="نام ایستگاه شارژ یا آدرس" />
                 </div>
@@ -873,6 +891,18 @@ const Charging = () => {
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="duration_minutes">{language === "fa" ? "مدت زمان (دقیقه، اختیاری)" : "Duration (minutes, optional)"}</Label>
+                <Input
+                  id="duration_minutes"
+                  type="number"
+                  min="1"
+                  value={formData.duration_minutes}
+                  onChange={(e) => onDurationChange(e.target.value)}
+                  placeholder={language === "fa" ? "پیش‌بینی از انرژی و توان شارژ" : "predicted from energy & power"}
+                />
               </div>
 
               <DialogFooter>
