@@ -31,12 +31,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Edit, Trash2, CalendarIcon, Zap, Clock, Pencil, Check, X, ChevronDown, FilterX } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Edit, Trash2, CalendarIcon, Zap, Clock, Pencil, Check, X, ChevronDown, FilterX, AlertTriangle, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { format as formatJalali } from "date-fns-jalali";
 import { JalaliDatePicker } from "@/components/JalaliDatePicker";
 import { TOUBreakdown } from "@/components/TOUBreakdown";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { calcCost, ratesFromSettings, ratesForSession, formatCost } from "@/lib/cost";
 import { SOCAnalysis } from "@/components/SOCAnalysis";
 import { Header } from "@/components/Header";
@@ -52,6 +54,7 @@ import {
   predictEndSoc,
   applyRegen,
 } from "@/features/charging/consumption";
+import { computeEntryFlags, hasBlockingError, severityStyle, type EntryFlag } from "@/features/charging/warnings";
 
 interface FormData {
   car_id: string;
@@ -287,6 +290,36 @@ const Charging = () => {
   const endHint = !socAuto.end && predictedEnd != null && toInt(formData.end_soc) != null &&
     Math.abs((toInt(formData.end_soc) as number) - predictedEnd) > SOC_HINT_MARGIN ? predictedEnd : null;
 
+  // FEAT-5 entry-time flags (client mirror of the backend rules). Errors block save.
+  const entryFlags = useMemo<EntryFlag[]>(() => {
+    const { prev } = predInputs(formData.car_id);
+    return computeEntryFlags({
+      odometer: toInt(formData.odometer_km),
+      prevOdometer: prev?.odometer_km ?? null,
+      startSoc: toInt(formData.start_soc),
+      endSoc: toInt(formData.end_soc),
+      energyKwh: energyTotal(formData),
+      chargePowerKw: formData.charge_power_kw.trim() === "" ? null : parseFloat(formData.charge_power_kw),
+      durationMin: toInt(formData.duration_minutes),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, sessions]);
+  const flagsFor = (field: EntryFlag["field"]) => entryFlags.filter((f) => f.field === field);
+  const fieldHasError = (field: EntryFlag["field"]) => flagsFor(field).some((f) => f.severity === "error");
+  const saveBlocked = hasBlockingError(entryFlags);
+
+  // Renders the inline flag messages under a field (🔴 error / 🟡 warning).
+  const FieldFlags = ({ field }: { field: EntryFlag["field"] }) => (
+    <>
+      {flagsFor(field).map((f) => (
+        <p key={f.code} className={cn("text-xs flex items-start gap-1", severityStyle[f.severity].text)}>
+          {f.severity === "error" ? <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+          <span>{f.message}</span>
+        </p>
+      ))}
+    </>
+  );
+
   // The car a fresh form should pre-select: the user's default car if it still exists,
   // otherwise the first car in the list.
   const defaultCarId = useMemo(() => {
@@ -371,6 +404,10 @@ const Charging = () => {
     e.preventDefault();
     if (!validate()) {
       toast.error("لطفاً فیلدهای اجباری را پر کنید");
+      return;
+    }
+    if (saveBlocked) {
+      toast.error("لطفاً خطاهای فرم را برطرف کنید");
       return;
     }
     try {
@@ -601,8 +638,11 @@ const Charging = () => {
           <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {displaySessions.map((session) => {
               const isExpanded = !collapsedIds.has(session.id);
+              const warns = session.warnings ?? [];
+              const flagged = warns.length > 0;
+              const hasEffWarn = warns.some((w) => w.code === "efficiency_out_of_band");
               return (
-              <Card key={session.id} className="overflow-hidden">
+              <Card key={session.id} className={cn("overflow-hidden", flagged && "border-s-4 border-s-amber-500 bg-amber-500/5")}>
                 {/* Summary row — tap to expand */}
                 <div
                   role="button"
@@ -624,6 +664,25 @@ const Charging = () => {
                           className={cn("h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
                         />
                         <span className="truncate">{carName(session.car_id)}</span>
+                        {flagged && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10 gap-1 px-1.5 shrink-0">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  {formatNumber(String(warns.length))}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[260px] text-right" dir="rtl">
+                                <ul className="space-y-1">
+                                  {warns.map((w) => (
+                                    <li key={w.code} className="text-xs">{w.message}</li>
+                                  ))}
+                                </ul>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </span>
                       <div className="flex gap-1 flex-shrink-0">
                         <Button
@@ -663,7 +722,7 @@ const Charging = () => {
                       </span>
                       <span>{formatCost(getSessionCost(session), currency)}</span>
                       {session.efficiency_kwh_per_100km != null && (
-                        <span className="font-medium text-foreground">
+                        <span className={cn("font-medium", hasEffWarn ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
                           {session.efficiency_kwh_per_100km.toFixed(1)} kWh/100km
                         </span>
                       )}
@@ -675,6 +734,17 @@ const Charging = () => {
                 {isExpanded && (
                   <CardContent className="p-4 sm:p-6 pt-0">
                     <div className="space-y-3 border-t border-border/50 pt-3">
+                      {/* FEAT-5: warnings block first, so tap users see them without the tooltip */}
+                      {flagged && (
+                        <div className="space-y-1 rounded-md bg-amber-500/10 p-2">
+                          {warns.map((w) => (
+                            <p key={w.code} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                              <span>{w.message}</span>
+                            </p>
+                          ))}
+                        </div>
+                      )}
                       {/* Start time + duration */}
                       <div className="flex items-center gap-2 text-sm">
                         <Clock className="h-4 w-4 text-muted-foreground" />
@@ -873,12 +943,15 @@ const Charging = () => {
               {errors.energy && (
                 <p className="text-sm text-destructive">حداقل مقدار انرژی شارژشده الزامی است</p>
               )}
+              <FieldFlags field="energy" />
 
               <div className="space-y-2">
                 <Label htmlFor="odometer_km">{language === "fa" ? "کیلومتر شمار (اختیاری)" : "Odometer (km, optional)"}</Label>
                 <Input id="odometer_km" type="number" min="0" step="1" value={formData.odometer_km}
+                  className={cn(fieldHasError("odometer") && severityStyle.error.fieldBorder)}
                   onChange={(e) => onOdometerChange(e.target.value)}
                   placeholder={language === "fa" ? "مثلاً ۱۲۳۴۵" : "e.g. 12345"} />
+                <FieldFlags field="odometer" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -914,22 +987,26 @@ const Charging = () => {
                 <div className="space-y-2">
                   <Label htmlFor="start_soc">SOC شروع (%)</Label>
                   <Input id="start_soc" type="number" min="0" max="100" value={formData.start_soc}
+                    className={cn(fieldHasError("start_soc") && severityStyle.error.fieldBorder)}
                     onChange={(e) => onStartSocChange(e.target.value)} placeholder="30" />
                   {startHint != null && (
                     <p className="text-[11px] text-muted-foreground">
                       {language === "fa" ? `پیش‌بینی: حدود ${startHint}%` : `Predicted: ~${startHint}%`}
                     </p>
                   )}
+                  <FieldFlags field="start_soc" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="end_soc">SOC پایان (%)</Label>
                   <Input id="end_soc" type="number" min="0" max="100" value={formData.end_soc}
+                    className={cn(fieldHasError("end_soc") && severityStyle.error.fieldBorder)}
                     onChange={(e) => onEndSocChange(e.target.value)} placeholder="80" />
                   {endHint != null && (
                     <p className="text-[11px] text-muted-foreground">
                       {language === "fa" ? `پیش‌بینی: حدود ${endHint}%` : `Predicted: ~${endHint}%`}
                     </p>
                   )}
+                  <FieldFlags field="end_soc" />
                 </div>
               </div>
 
@@ -943,13 +1020,14 @@ const Charging = () => {
                   onChange={(e) => onDurationChange(e.target.value)}
                   placeholder={language === "fa" ? "پیش‌بینی از انرژی و توان شارژ" : "predicted from energy & power"}
                 />
+                <FieldFlags field="duration" />
               </div>
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={resetForm}>
                   {t("common.cancel")}
                 </Button>
-                <Button type="submit" disabled={createSession.isPending || updateSession.isPending}>
+                <Button type="submit" disabled={createSession.isPending || updateSession.isPending || saveBlocked}>
                   {createSession.isPending || updateSession.isPending ? "در حال ثبت..." : t("common.save")}
                 </Button>
               </DialogFooter>
